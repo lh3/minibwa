@@ -40,11 +40,11 @@
 #define OCC_INTV_MASK  (OCC_INTERVAL - 1)
 
 #if OCC_INTV_SHIFT == 7
-#define bwt_bwt(b, k) ((b)->bwt[((k)>>7<<4) + sizeof(mb_uint_t) + (((k)&0x7f)>>4)])
 #define bwt_occ_intv(b, k) ((b)->bwt + ((k)>>7<<4))
+#define bwt_bwt(b, k) ((b)->bwt[((k)>>7<<4) + sizeof(mb_uint_t) + (((k)&0x7f)>>4)])
 #else
-#define bwt_bwt(b, k) ((b)->bwt[(k)/OCC_INTERVAL * (OCC_INTERVAL/(sizeof(uint32_t)*8/2) + sizeof(mb_uint_t)/4*4) + sizeof(mb_uint_t)/4*4 + (k)%OCC_INTERVAL/16])
 #define bwt_occ_intv(b, k) ((b)->bwt + (k)/OCC_INTERVAL * (OCC_INTERVAL/(sizeof(uint32_t)*8/2) + sizeof(mb_uint_t)/4*4)
+#define bwt_bwt(b, k) ((b)->bwt[(k)/OCC_INTERVAL * (OCC_INTERVAL/(sizeof(uint32_t)*8/2) + sizeof(mb_uint_t)/4*4) + sizeof(mb_uint_t)/4*4 + (k)%OCC_INTERVAL/16])
 #error "OCC_INTV_SHIFT MUST BE 7" // although bwt_bwt() and bwt_occ_intv() are correct, other places may be wrong
 #endif
 
@@ -122,9 +122,9 @@ mb_uint_t mb_bwt_rank11(const mb_bwt_t *bwt, mb_uint_t k0, uint8_t c)
 	return n;
 }
 
-static inline uint32_t rank_aux4(const mb_bwt_t *bwt, uint8_t c)
+static inline uint32_t rank_aux4(const mb_bwt_t *bwt, uint32_t x)
 {
-	return bwt->cnt_table[c&0xff] + bwt->cnt_table[c>>8&0xff] + bwt->cnt_table[c>>16&0xff] + bwt->cnt_table[c>>24];
+	return bwt->cnt_table[x&0xff] + bwt->cnt_table[x>>8&0xff] + bwt->cnt_table[x>>16&0xff] + bwt->cnt_table[x>>24];
 }
 
 void mb_bwt_rank1a(const mb_bwt_t *bwt, mb_uint_t k0, mb_uint_t cnt[4])
