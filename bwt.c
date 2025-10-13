@@ -28,6 +28,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include "utils.h"
+#include "kalloc.h"
 #include "bwt.h"
 
 /**********
@@ -226,6 +227,53 @@ void mb_bwt_extend(const mb_bwt_t *bwt, const mb_sai_t *ik, mb_sai_t ok[4], int 
 	ok[0].x[is_back] = ok[1].x[is_back] + tl[1];
 }
 
+int64_t mb_bwt_smem1(void *km, const mb_bwt_t *f, int64_t min_occ, int64_t min_len, int64_t len, const uint8_t *q, int64_t x, mb_sai_v *mem, int32_t check_long)
+{
+	int64_t i, j;
+	mb_sai_t ik, ok[4], *p;
+
+	assert(len <= INT32_MAX); // this can be relaxed if we define a new struct for mem
+	if (len - x < min_len) return len;
+	mb_bwt_set_intv(f, q[x + min_len - 1], &ik);
+	for (i = x + min_len - 2; i >= x; --i) { // backward extension
+		int c = q[i];
+		mb_bwt_extend(f, &ik, ok, 1);
+		if (ok[c].size < min_occ) break;
+		ik = ok[c];
+	}
+	if (i >= x) return i + 1; // no MEM found
+	if (check_long) return -1;
+	for (j = x + min_len; j < len; ++j) { // forward extension
+		int c = 3 - q[j];
+		mb_bwt_extend(f, &ik, ok, 0);
+		if (ok[c].size < min_occ) break;
+		ik = ok[c];
+	}
+	Kgrow(km, mb_sai_t, mem->a, mem->n, mem->m);
+	p = &mem->a[mem->n++];
+	*p = ik;
+	p->info = (uint64_t)x<<32 | j;
+	if (j == len) return len;
+	mb_bwt_set_intv(f, q[j], &ik);
+	for (i = j - 1; i > x; --i) { // backward extension again
+		int c = q[i];
+		mb_bwt_extend(f, &ik, ok, 1);
+		if (ok[c].size < min_occ) break;
+		ik = ok[c];
+	}
+	return i + 1;
+}
+
+int64_t mb_bwt_smem(void *km, const mb_bwt_t *f, int64_t len, const uint8_t *q, mb_sai_v *mem, int64_t min_occ, int64_t min_len)
+{
+	int64_t x = 0;
+	mem->n = 0;
+	do {
+		x = mb_bwt_smem1(km, f, min_occ, min_len, len, q, x, mem, 0);
+	} while (x < len);
+	return mem->n;
+}
+
 /*
 // an analogy to bwt_occ() but more efficient, requiring k <= l
 void bwt_2occ(const bwt_t *bwt, uint64_t k, uint64_t l, uint8_t c, uint64_t *ok, uint64_t *ol)
@@ -295,91 +343,6 @@ int bwt_match_exact_alt(const bwt_t *bwt, int len, const uint8_t *str, uint64_t 
 	}
 	*k0 = k; *l0 = l;
 	return l - k + 1;
-}
-*/
-/*********************
- * Bidirectional BWT *
- *********************/
-/*
-static void bwt_reverse_intvs(bwtintv_v *p)
-{
-	if (p->n > 1) {
-		int j;
-		for (j = 0; j < p->n>>1; ++j) {
-			bwtintv_t tmp = p->a[p->n - 1 - j];
-			p->a[p->n - 1 - j] = p->a[j];
-			p->a[j] = tmp;
-		}
-	}
-}
-// NOTE: $max_intv is not currently used in BWA-MEM
-int bwt_smem1a(const bwt_t *bwt, int len, const uint8_t *q, int x, int min_intv, uint64_t max_intv, bwtintv_v *mem, bwtintv_v *tmpvec[2])
-{
-	int i, j, c, ret;
-	bwtintv_t ik, ok[4];
-	bwtintv_v a[2], *prev, *curr, *swap;
-
-	mem->n = 0;
-	if (q[x] > 3) return x + 1;
-	if (min_intv < 1) min_intv = 1; // the interval size should be at least 1
-	kv_init(a[0]); kv_init(a[1]);
-	prev = tmpvec && tmpvec[0]? tmpvec[0] : &a[0]; // use the temporary vector if provided
-	curr = tmpvec && tmpvec[1]? tmpvec[1] : &a[1];
-	bwt_set_intv(bwt, q[x], ik); // the initial interval of a single base
-	ik.info = x + 1;
-
-	for (i = x + 1, curr->n = 0; i < len; ++i) { // forward search
-		if (ik.x[2] < max_intv) { // an interval small enough
-			kv_push(bwtintv_t, *curr, ik);
-			break;
-		} else if (q[i] < 4) { // an A/C/G/T base
-			c = 3 - q[i]; // complement of q[i]
-			bwt_extend(bwt, &ik, ok, 0);
-			if (ok[c].x[2] != ik.x[2]) { // change of the interval size
-				kv_push(bwtintv_t, *curr, ik);
-				if (ok[c].x[2] < min_intv) break; // the interval size is too small to be extended further
-			}
-			ik = ok[c]; ik.info = i + 1;
-		} else { // an ambiguous base
-			kv_push(bwtintv_t, *curr, ik);
-			break; // always terminate extension at an ambiguous base; in this case, i<len always stands
-		}
-	}
-	if (i == len) kv_push(bwtintv_t, *curr, ik); // push the last interval if we reach the end
-	bwt_reverse_intvs(curr); // s.t. smaller intervals (i.e. longer matches) visited first
-	ret = curr->a[0].info; // this will be the returned value
-	swap = curr; curr = prev; prev = swap;
-
-	for (i = x - 1; i >= -1; --i) { // backward search for MEMs
-		c = i < 0? -1 : q[i] < 4? q[i] : -1; // c==-1 if i<0 or q[i] is an ambiguous base
-		for (j = 0, curr->n = 0; j < prev->n; ++j) {
-			bwtintv_t *p = &prev->a[j];
-			if (c >= 0 && ik.x[2] >= max_intv) bwt_extend(bwt, p, ok, 1);
-			if (c < 0 || ik.x[2] < max_intv || ok[c].x[2] < min_intv) { // keep the hit if reaching the beginning or an ambiguous base or the intv is small enough
-				if (curr->n == 0) { // test curr->n>0 to make sure there are no longer matches
-					if (mem->n == 0 || i + 1 < mem->a[mem->n-1].info>>32) { // skip contained matches
-						ik = *p; ik.info |= (uint64_t)(i + 1)<<32;
-						kv_push(bwtintv_t, *mem, ik);
-					}
-				} // otherwise the match is contained in another longer match
-			} else if (curr->n == 0 || ok[c].x[2] != curr->a[curr->n-1].x[2]) {
-				ok[c].info = p->info;
-				kv_push(bwtintv_t, *curr, ok[c]);
-			}
-		}
-		if (curr->n == 0) break;
-		swap = curr; curr = prev; prev = swap;
-	}
-	bwt_reverse_intvs(mem); // s.t. sorted by the start coordinate
-
-	if (tmpvec == 0 || tmpvec[0] == 0) free(a[0].a);
-	if (tmpvec == 0 || tmpvec[1] == 0) free(a[1].a);
-	return ret;
-}
-
-int bwt_smem1(const bwt_t *bwt, int len, const uint8_t *q, int x, int min_intv, bwtintv_v *mem, bwtintv_v *tmpvec[2])
-{
-	return bwt_smem1a(bwt, len, q, x, min_intv, 0, mem, tmpvec);
 }
 
 int bwt_seed_strategy1(const bwt_t *bwt, int len, const uint8_t *q, int x, int min_len, int max_intv, bwtintv_t *mem)
