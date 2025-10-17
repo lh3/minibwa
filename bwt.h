@@ -14,7 +14,7 @@ typedef struct {
 	uint64_t *data; // BWT
 	uint32_t cnt_table[256];
 	// suffix array
-	int32_t sa_intv, sa_intv_bit;
+	uint32_t sa_bit; // sample rate: 1/(1<<sa_bit)
 	uint64_t n_sa;
 	uint64_t *sa;
 } mb_bwt_t;

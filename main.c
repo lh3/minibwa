@@ -2,11 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include "bwt.h"
-#include "sys.h"
-#include "utils.h"
 #include "ketopt.h"
 #include "l2bit.h"
-#include "hl.h"
+#include "kommon.h"
 
 #define MB_VERSION "0.0"
 
@@ -29,7 +27,7 @@ static int usage(FILE *fp)
 int main(int argc, char *argv[])
 {
 	int ret = 0;
-	mb_realtime();
+	kom_realtime();
 	if (argc == 1) return usage(stdout);
 	else if (strcmp(argv[1], "fa2bit") == 0) ret = main_fa2bit(argc-1, argv+1);
 	else if (strcmp(argv[1], "genraw") == 0) ret = main_genraw(argc-1, argv+1);
@@ -43,13 +41,13 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	if (mb_verbose >= 3 && argc > 2 && ret == 0) {
+	if (kom_verbose >= 3 && argc > 2 && ret == 0) {
 		int i;
 		fprintf(stderr, "[M::%s] Version: %s\n", __func__, MB_VERSION);
 		fprintf(stderr, "[M::%s] CMD:", __func__);
 		for (i = 0; i < argc; ++i)
 			fprintf(stderr, " %s", argv[i]);
-		fprintf(stderr, "\n[M::%s] Real time: %.3f sec; CPU: %.3f sec; Peak RSS: %.3f GB\n", __func__, mb_realtime(), mb_cputime(), mb_peakrss() / 1024.0 / 1024.0 / 1024.0);
+		fprintf(stderr, "\n[M::%s] Real time: %.3f sec; CPU: %.3f sec; Peak RSS: %.3f GB\n", __func__, kom_realtime(), kom_cputime(), kom_peakrss() / 1024.0 / 1024.0 / 1024.0);
 	}
 	return 0;
 }
@@ -89,7 +87,7 @@ int main_genraw(int argc, char *argv[])
 	ketopt_t o = KETOPT_INIT;
 	int c, block_size = 10000000;
 	while ((c = ketopt(&o, argc, argv, 1, "b:", 0)) >= 0) {
-		if (c == 'b') block_size = hl_parse_num(o.arg, 0);
+		if (c == 'b') block_size = kom_parse_num(o.arg, 0);
 	}
 	if (argc - o.ind < 2) {
 		fprintf(stderr, "Usage: minibwa genraw [options] <in.pac> <out.raw-bwt>\n");
@@ -126,9 +124,9 @@ int main_test(int argc, char *argv[])
 
 	bwt = mb_bwt_load(argv[1]);
 	if (n > 0) {
-		double t = mb_cputime();
+		double t = kom_cputime();
 		for (i = 0; i < n; ++i) {
-			uint64_t k = hl_splitmix64(&x) % bwt->seq_len;
+			uint64_t k = kom_splitmix64(&x) % bwt->seq_len;
 			#if 1
 			uint64_t cnt[4];
 			mb_bwt_rank1a(bwt, k, cnt);
@@ -137,7 +135,7 @@ int main_test(int argc, char *argv[])
 			printf("%lld\n", mb_bwt_rank11(bwt, k, 1));
 			#endif
 		}
-		fprintf(stderr, "t = %.3f\n", mb_cputime() - t);
+		fprintf(stderr, "t = %.3f\n", kom_cputime() - t);
 	} else {
 		uint64_t k = 10, cnt[4];
 		int c;

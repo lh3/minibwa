@@ -3,15 +3,9 @@
 #include <string.h>
 #include <assert.h>
 #include <stdint.h>
-#include "hl.h"
+#include "kommon.h"
 #include "kalloc.h"
 #include "bwt.h"
-
-int mb_verbose = 3;
-
-/**********
- * Macros *
- **********/
 
 /********************
  * Basic operations *
@@ -31,7 +25,8 @@ static void bwt_gen_cnt_table(uint32_t cnt[256])
 mb_bwt_t *mb_bwt_init(void)
 {
 	mb_bwt_t *bwt;
-	bwt = hl_calloc(mb_bwt_t, 1);
+	bwt = kom_calloc(mb_bwt_t, 1);
+	bwt->sa_bit = (uint32_t)-1;
 	bwt_gen_cnt_table(bwt->cnt_table);
 	return bwt;
 }
@@ -66,7 +61,7 @@ mb_bwt_t *mb_bwt_init_from_raw(const uint32_t *raw, uint64_t len, uint64_t prima
 	bwt->primary = primary;
 	bwt->seq_len = len;
 	bwt->data_len = mb_bwt_data_len(len);
-	bwt->data = hl_calloc(uint64_t, bwt->data_len);
+	bwt->data = kom_calloc(uint64_t, bwt->data_len);
 
 	memset(c, 0, 32);
 	for (i = k = 0; i < len; ++i) {
@@ -270,41 +265,37 @@ static inline uint64_t bwt_invPsi(const mb_bwt_t *bwt, uint64_t k) // compute in
 }
 
 // bwt->bwt and bwt->occ must be precalculated
-void mb_gen_sa(mb_bwt_t *bwt, uint32_t intv)
+void mb_bwt_gen_sa(mb_bwt_t *bwt, uint32_t sa_bit)
 {
 	uint64_t isa, sa, i, mask; // S(isa) = sa
 
-	hl_assert(intv > 0 && (intv & (intv - 1)) == 0, "SA sample interval is not a power of 2.");
-	hl_assert(bwt->data, "bwt_t::data is not initialized.");
-
+	assert(bwt->data);
 	if (bwt->sa) free(bwt->sa);
-	for (i = 0; 1U<<i != intv; ++i) {}
-	bwt->sa_intv_bit = i;
-	bwt->sa_intv = intv;
-	bwt->n_sa = (bwt->seq_len + intv) >> bwt->sa_intv_bit;
-	bwt->sa = hl_calloc(uint64_t, bwt->n_sa);
+	bwt->sa_bit = sa_bit;
+	bwt->n_sa = (bwt->seq_len + (1<<sa_bit)) >> sa_bit;
+	bwt->sa = kom_calloc(uint64_t, bwt->n_sa);
 
 	// calculate SA value
-	isa = 0, sa = bwt->seq_len, mask = intv - 1;
+	isa = 0, sa = bwt->seq_len, mask = (1ULL<<sa_bit) - 1;
 	for (i = 0; i < bwt->seq_len; ++i) {
-		if ((isa & mask) == 0) bwt->sa[isa >> bwt->sa_intv_bit] = sa;
+		if ((isa & mask) == 0) bwt->sa[isa >> bwt->sa_bit] = sa;
 		--sa;
 		isa = bwt_invPsi(bwt, isa);
 	}
-	if ((isa & mask) == 0) bwt->sa[isa >> bwt->sa_intv_bit] = sa;
+	if ((isa & mask) == 0) bwt->sa[isa >> bwt->sa_bit] = sa;
 	bwt->sa[0] = (uint64_t)-1; // before this line, bwt->sa[0] = bwt->seq_len
 }
 
 uint64_t mb_bwt_sa(const mb_bwt_t *bwt, uint64_t k)
 {
-	uint64_t sa = 0, mask = bwt->sa_intv - 1;
+	uint64_t sa = 0, mask = (1ULL<<bwt->sa_bit) - 1;
 	while (k & mask) {
 		++sa;
 		k = bwt_invPsi(bwt, k);
 	}
 	// without setting bwt->sa[0] = -1, the following line should be
 	// changed to (sa + bwt->sa[k/bwt->sa_intv]) % (bwt->seq_len + 1)
-	return sa + bwt->sa[k >> bwt->sa_intv_bit];
+	return sa + bwt->sa[k >> bwt->sa_bit];
 }
 
 /*************************
@@ -333,7 +324,7 @@ mb_bwt_t *mb_bwt_load_raw(const char *fn)
 	fp = fopen(fn, "rb");
 	fseek(fp, 0, SEEK_END);
 	raw_size = (ftell(fp) - sizeof(uint64_t) * 5) >> 2;
-	raw = hl_calloc(uint32_t, raw_size);
+	raw = kom_calloc(uint32_t, raw_size);
 	fseek(fp, 0, SEEK_SET);
 	fread(&primary, sizeof(uint64_t), 1, fp);
 	fread(L2 + 1, sizeof(uint64_t), 4, fp);
@@ -348,15 +339,16 @@ mb_bwt_t *mb_bwt_load_raw(const char *fn)
 int mb_bwt_save(const char *fn, const mb_bwt_t *bwt)
 {
 	FILE *fp;
-	uint32_t dummy = 0;
-
 	fp = fopen(fn, "wb");
 	if (fp == 0) return -1;
 	fwrite(MB_MAGIC, 1, 4, fp);
-	fwrite(&dummy, 4, 1, fp);
+	fwrite(&bwt->sa_bit, 4, 1, fp);
 	fwrite(&bwt->primary, 8, 1, fp);
 	fwrite(&bwt->L2[1], 8, 4, fp);
 	fwrite(bwt->data, 8, bwt->data_len, fp);
+	fwrite(&bwt->n_sa, 8, 1, fp);
+	if (bwt->sa_bit != (uint32_t)-1 && bwt->n_sa > 0 && bwt->sa)
+		fwrite(bwt->sa, 8, bwt->n_sa, fp);
 	fclose(fp);
 	return 0;
 }
@@ -365,7 +357,6 @@ mb_bwt_t *mb_bwt_load(const char *fn)
 {
 	FILE *fp;
 	char magic[4];
-	uint32_t dummy;
 	uint64_t x[5];
 	mb_bwt_t *bwt;
 
@@ -376,52 +367,20 @@ mb_bwt_t *mb_bwt_load(const char *fn)
 		fclose(fp);
 		return 0;
 	}
-	fread(&dummy, 4, 1, fp);
-	fread(x, 8, 5, fp);
 	bwt = mb_bwt_init();
+	fread(&bwt->sa_bit, 4, 1, fp);
+	fread(x, 8, 5, fp);
 	bwt->primary = x[0];
 	memcpy(&bwt->L2[1], &x[1], 32);
 	bwt->seq_len = bwt->L2[4];
 	bwt->data_len = mb_bwt_data_len(bwt->seq_len);
-	bwt->data = hl_calloc(uint64_t, bwt->data_len);
+	bwt->data = kom_calloc(uint64_t, bwt->data_len);
 	read_huge(fp, bwt->data_len << 3, bwt->data);
+	fread(&bwt->n_sa, 8, 1, fp);
+	if (bwt->sa_bit != (uint32_t)-1 && bwt->n_sa > 0) {
+		bwt->sa = kom_malloc(uint64_t, bwt->n_sa);
+		fread(bwt->sa, 8, bwt->n_sa, fp);
+	}
+	fclose(fp);
 	return bwt;
 }
-
-/*
-void mb_bwt_dump_sa(const char *fn, const mb_bwt_t *bwt)
-{
-	FILE *fp;
-	fp = fopen(fn, "wb");
-	hl_assert(fp, "failed to write the suffix array sample file.");
-	fwrite(&bwt->primary, sizeof(uint64_t), 1, fp);
-	fwrite(bwt->L2+1, sizeof(uint64_t), 4, fp);
-	fwrite(&bwt->sa_intv, sizeof(uint64_t), 1, fp);
-	fwrite(&bwt->seq_len, sizeof(uint64_t), 1, fp);
-	fwrite(bwt->sa + 1, sizeof(uint64_t), bwt->n_sa - 1, fp);
-	fflush(fp);
-	fclose(fp);
-}
-
-void mb_bwt_restore_sa(const char *fn, mb_bwt_t *bwt)
-{
-	char skipped[256];
-	FILE *fp;
-	uint64_t primary;
-
-	fp = fopen(fn, "rb");
-	fread(&primary, sizeof(uint64_t), 1, fp);
-	hl_assert(primary == bwt->primary, "inconsistent primary.");
-	fread(skipped, sizeof(uint64_t), 4, fp); // skip
-	fread(&bwt->sa_intv, sizeof(uint64_t), 1, fp);
-	fread(&primary, sizeof(uint64_t), 1, fp);
-	hl_assert(primary == bwt->seq_len, "inconsistent sequence length.");
-
-	bwt->n_sa = (bwt->seq_len + bwt->sa_intv) / bwt->sa_intv;
-	bwt->sa = hl_calloc(uint64_t, bwt->n_sa);
-	bwt->sa[0] = -1;
-
-	read_huge(fp, sizeof(uint64_t) * (bwt->n_sa - 1), bwt->sa + 1);
-	fclose(fp);
-}
-*/
