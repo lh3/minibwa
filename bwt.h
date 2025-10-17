@@ -42,6 +42,9 @@ uint64_t mb_bwt_rank11(const mb_bwt_t *bwt, uint64_t k, uint8_t c);
 void mb_bwt_rank1a(const mb_bwt_t *bwt, uint64_t k, uint64_t cnt[4]);
 void mb_bwt_rank2a(const mb_bwt_t *bwt, uint64_t k, uint64_t l, uint64_t cntk[4], uint64_t cntl[4]);
 
+// defined in bwtgen.c
+void mb_bwtgen(const char *fn_pac, const char *fn_bwt, int block_size);
+
 static inline void mb_bwt_set_intv(const mb_bwt_t *bwt, int c, mb_sai_t *ik)
 {
 	ik->x[0] = bwt->L2[c] + 1; // +1 for the missing sentinel

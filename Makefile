@@ -4,7 +4,7 @@ CFLAGS=		-std=c99 -g -Wall -O3
 CXXFLAGS=	$(CFLAGS)
 CPPFLAGS=
 INCLUDES=
-OBJS=		utils.o kalloc.o sys.o bwt.o l2bit.o
+OBJS=		hl.o utils.o kalloc.o sys.o bwt.o l2bit.o QSufSort.o bwtgen.o
 PROG=		minibwa
 LIBS=		-lpthread -lz -lm
 
@@ -35,6 +35,15 @@ depend:
 
 # DO NOT DELETE
 
-bwt.o: utils.h bwt.h
+QSufSort.o: QSufSort.h
+bseq.o: bseq.h kseq.h
+bwt.o: hl.h kalloc.h bwt.h
+bwtgen.o: QSufSort.h
+hl.o: hl.h
+index.o: bwt.h
 kalloc.o: kalloc.h
+l2bit.o: hl.h l2bit.h kseq.h
+main.o: bwt.h sys.h utils.h ketopt.h l2bit.h hl.h
+msais.o: msais.h
+sys.o: sys.h
 utils.o: utils.h

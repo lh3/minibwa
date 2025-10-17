@@ -1,33 +1,9 @@
-/* The MIT License
-
-   Copyright (c) 2008 Genome Research Ltd (GRL).
-
-   Permission is hereby granted, free of charge, to any person obtaining
-   a copy of this software and associated documentation files (the
-   "Software"), to deal in the Software without restriction, including
-   without limitation the rights to use, copy, modify, merge, publish,
-   distribute, sublicense, and/or sell copies of the Software, and to
-   permit persons to whom the Software is furnished to do so, subject to
-   the following conditions:
-
-   The above copyright notice and this permission notice shall be
-   included in all copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-   NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
-   BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
-   ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-   CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE.
-*/
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
 #include <stdint.h>
-#include "utils.h"
+#include "hl.h"
 #include "kalloc.h"
 #include "bwt.h"
 
@@ -55,7 +31,7 @@ static void bwt_gen_cnt_table(uint32_t cnt[256])
 mb_bwt_t *mb_bwt_init(void)
 {
 	mb_bwt_t *bwt;
-	bwt = mb_calloc(mb_bwt_t, 1);
+	bwt = hl_calloc(mb_bwt_t, 1);
 	bwt_gen_cnt_table(bwt->cnt_table);
 	return bwt;
 }
@@ -90,7 +66,7 @@ mb_bwt_t *mb_bwt_init_from_raw(const uint32_t *raw, uint64_t len, uint64_t prima
 	bwt->primary = primary;
 	bwt->seq_len = len;
 	bwt->data_len = mb_bwt_data_len(len);
-	bwt->data = mb_calloc(uint64_t, bwt->data_len);
+	bwt->data = hl_calloc(uint64_t, bwt->data_len);
 
 	memset(c, 0, 32);
 	for (i = k = 0; i < len; ++i) {
@@ -280,16 +256,16 @@ int64_t mb_bwt_smem(void *km, const mb_bwt_t *f, int64_t len, const uint8_t *q, 
 /***************************
  * Suffix array operations *
  ***************************/
-/*
-// retrieve a character from the $-removed BWT string. Note that bwt_t::data is
+
+// retrieve a character from the $-removed BWT string. Note that mb_bwt_t::data is
 // not exactly the BWT string and therefore this macro is called bwt_B0 instead of bwt_B
-#define bwt_B0(b, k) (bwt_block(b, k)>>((~(k)&0xf)<<1)&3)
+#define bwt_B0(b, k) (*(bwt_block(b, k) + 4 + ((k)>>5)) >> (((k)&31)<<1) & 3)
 
 static inline uint64_t bwt_invPsi(const mb_bwt_t *bwt, uint64_t k) // compute inverse CSA
 {
 	uint64_t x = k - (k > bwt->primary);
-	x = bwt_B0(bwt, x);
-	x = bwt->L2[x] + mb_bwt_rank11(bwt, k, x);
+	int c = bwt_B0(bwt, x);
+	x = bwt->L2[c] + mb_bwt_rank11(bwt, k, c);
 	return k == bwt->primary? 0 : x;
 }
 
@@ -298,15 +274,15 @@ void mb_gen_sa(mb_bwt_t *bwt, uint32_t intv)
 {
 	uint64_t isa, sa, i, mask; // S(isa) = sa
 
-	mb_assert(intv > 0 && (intv & (intv - 1)) == 0, "SA sample interval is not a power of 2.");
-	mb_assert(bwt->bwt, "bwt_t::bwt is not initialized.");
+	hl_assert(intv > 0 && (intv & (intv - 1)) == 0, "SA sample interval is not a power of 2.");
+	hl_assert(bwt->data, "bwt_t::data is not initialized.");
 
 	if (bwt->sa) free(bwt->sa);
 	for (i = 0; 1U<<i != intv; ++i) {}
 	bwt->sa_intv_bit = i;
 	bwt->sa_intv = intv;
 	bwt->n_sa = (bwt->seq_len + intv) >> bwt->sa_intv_bit;
-	bwt->sa = mb_calloc(uint64_t, bwt->n_sa);
+	bwt->sa = hl_calloc(uint64_t, bwt->n_sa);
 
 	// calculate SA value
 	isa = 0, sa = bwt->seq_len, mask = intv - 1;
@@ -330,7 +306,7 @@ uint64_t mb_bwt_sa(const mb_bwt_t *bwt, uint64_t k)
 	// changed to (sa + bwt->sa[k/bwt->sa_intv]) % (bwt->seq_len + 1)
 	return sa + bwt->sa[k >> bwt->sa_intv_bit];
 }
-*/
+
 /*************************
  * Read/write BWT and SA *
  *************************/
@@ -357,7 +333,7 @@ mb_bwt_t *mb_bwt_load_raw(const char *fn)
 	fp = fopen(fn, "rb");
 	fseek(fp, 0, SEEK_END);
 	raw_size = (ftell(fp) - sizeof(uint64_t) * 5) >> 2;
-	raw = mb_calloc(uint32_t, raw_size);
+	raw = hl_calloc(uint32_t, raw_size);
 	fseek(fp, 0, SEEK_SET);
 	fread(&primary, sizeof(uint64_t), 1, fp);
 	fread(L2 + 1, sizeof(uint64_t), 4, fp);
@@ -407,7 +383,7 @@ mb_bwt_t *mb_bwt_load(const char *fn)
 	memcpy(&bwt->L2[1], &x[1], 32);
 	bwt->seq_len = bwt->L2[4];
 	bwt->data_len = mb_bwt_data_len(bwt->seq_len);
-	bwt->data = mb_calloc(uint64_t, bwt->data_len);
+	bwt->data = hl_calloc(uint64_t, bwt->data_len);
 	read_huge(fp, bwt->data_len << 3, bwt->data);
 	return bwt;
 }
@@ -417,7 +393,7 @@ void mb_bwt_dump_sa(const char *fn, const mb_bwt_t *bwt)
 {
 	FILE *fp;
 	fp = fopen(fn, "wb");
-	mb_assert(fp, "failed to write the suffix array sample file.");
+	hl_assert(fp, "failed to write the suffix array sample file.");
 	fwrite(&bwt->primary, sizeof(uint64_t), 1, fp);
 	fwrite(bwt->L2+1, sizeof(uint64_t), 4, fp);
 	fwrite(&bwt->sa_intv, sizeof(uint64_t), 1, fp);
@@ -435,14 +411,14 @@ void mb_bwt_restore_sa(const char *fn, mb_bwt_t *bwt)
 
 	fp = fopen(fn, "rb");
 	fread(&primary, sizeof(uint64_t), 1, fp);
-	mb_assert(primary == bwt->primary, "inconsistent primary.");
+	hl_assert(primary == bwt->primary, "inconsistent primary.");
 	fread(skipped, sizeof(uint64_t), 4, fp); // skip
 	fread(&bwt->sa_intv, sizeof(uint64_t), 1, fp);
 	fread(&primary, sizeof(uint64_t), 1, fp);
-	mb_assert(primary == bwt->seq_len, "inconsistent sequence length.");
+	hl_assert(primary == bwt->seq_len, "inconsistent sequence length.");
 
 	bwt->n_sa = (bwt->seq_len + bwt->sa_intv) / bwt->sa_intv;
-	bwt->sa = mb_calloc(uint64_t, bwt->n_sa);
+	bwt->sa = hl_calloc(uint64_t, bwt->n_sa);
 	bwt->sa[0] = -1;
 
 	read_huge(fp, sizeof(uint64_t) * (bwt->n_sa - 1), bwt->sa + 1);

@@ -6,18 +6,21 @@
 #include "utils.h"
 #include "ketopt.h"
 #include "l2bit.h"
+#include "hl.h"
 
 #define MB_VERSION "0.0"
 
 int main_fa2bit(int argc, char *argv[]);
 int main_raw2bwt(int argc, char *argv[]);
 int main_test(int argc, char *argv[]);
+int main_genraw(int argc, char *argv[]);
 
 static int usage(FILE *fp)
 {
 	fprintf(fp, "Usage: minibwt <command> <arguments>\n");
 	fprintf(fp, "Commands:\n");
 	fprintf(fp, "  fa2bit     convert FASTA to the long-2-bit format\n");
+	fprintf(fp, "  genraw     build BWT from pac with the BWT-SW algorithm\n");
 	fprintf(fp, "  raw2bwt    recode bwtgen raw BWT\n");
 	fprintf(fp, "  version    print the version number\n");
 	return fp == stdout? 0 : 1;
@@ -29,6 +32,7 @@ int main(int argc, char *argv[])
 	mb_realtime();
 	if (argc == 1) return usage(stdout);
 	else if (strcmp(argv[1], "fa2bit") == 0) ret = main_fa2bit(argc-1, argv+1);
+	else if (strcmp(argv[1], "genraw") == 0) ret = main_genraw(argc-1, argv+1);
 	else if (strcmp(argv[1], "raw2bwt") == 0) ret = main_raw2bwt(argc-1, argv+1);
 	else if (strcmp(argv[1], "test") == 0) ret = main_test(argc-1, argv+1);
 	else if (strcmp(argv[1], "version") == 0) {
@@ -79,6 +83,24 @@ int main_fa2bit(int argc, char *argv[])
 	return 0;
 }
 
+int main_genraw(int argc, char *argv[])
+{
+	extern void mb_bwtgen(const char *fn_pac, const char *fn_bwt, int block_size);
+	ketopt_t o = KETOPT_INIT;
+	int c, block_size = 10000000;
+	while ((c = ketopt(&o, argc, argv, 1, "b:", 0)) >= 0) {
+		if (c == 'b') block_size = hl_parse_num(o.arg, 0);
+	}
+	if (argc - o.ind < 2) {
+		fprintf(stderr, "Usage: minibwa genraw [options] <in.pac> <out.raw-bwt>\n");
+		fprintf(stderr, "Options:\n");
+		fprintf(stderr, "  -b NUM      block size [10m]\n");
+		return 1;
+	}
+	mb_bwtgen(argv[o.ind], argv[o.ind+1], block_size);
+	return 0;
+}
+
 int main_raw2bwt(int argc, char *argv[])
 {
 	mb_bwt_t *bwt;
@@ -106,7 +128,7 @@ int main_test(int argc, char *argv[])
 	if (n > 0) {
 		double t = mb_cputime();
 		for (i = 0; i < n; ++i) {
-			uint64_t k = mb_splitmix64(&x) % bwt->seq_len;
+			uint64_t k = hl_splitmix64(&x) % bwt->seq_len;
 			#if 1
 			uint64_t cnt[4];
 			mb_bwt_rank1a(bwt, k, cnt);
