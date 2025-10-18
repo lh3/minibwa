@@ -156,7 +156,9 @@ void mb_bwt_rank2a(const mb_bwt_t *bwt, uint64_t k, uint64_t l, uint64_t cntk[4]
 	uint64_t k1 = k - 1, l1 = l - 1;
 	k1 -= (k1 >= bwt->primary);
 	l1 -= (l1 >= bwt->primary);
+	if (k > 0) __builtin_prefetch(bwt_block(bwt, k1));
 	if (k1>>7 != l1>>7 || k == 0 || l == 0) {
+		if (l > 0) __builtin_prefetch(bwt_block(bwt, l1));
 		mb_bwt_rank1a(bwt, k, cntk);
 		mb_bwt_rank1a(bwt, l, cntl);
 	} else {

@@ -78,13 +78,10 @@ int main_test(int argc, char *argv[])
 		double t = kom_cputime();
 		for (i = 0; i < n; ++i) {
 			uint64_t k = kom_splitmix64(&x) % bwt->seq_len;
-			#if 1
-			uint64_t cnt[4];
-			mb_bwt_rank1a(bwt, k, cnt);
-			printf("%lld\n", cnt[1]);
-			#else
-			printf("%lld\n", mb_bwt_rank11(bwt, k, 1));
-			#endif
+			uint64_t l = kom_splitmix64(&x) % bwt->seq_len;
+			uint64_t cntk[4], cntl[4];
+			mb_bwt_rank2a(bwt, k, l, cntk, cntl);
+			//printf("%lld\n", cntk[1]);
 		}
 		fprintf(stderr, "t = %.3f\n", kom_cputime() - t);
 	} else {
