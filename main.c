@@ -128,8 +128,10 @@ int main_bench(int argc, char *argv[])
 				xor ^= s;
 			}
 			#else
-			uint64_t sa[intv], n_sa;
-			n_sa = mb_bwt_sa_multi(0, bwt, k, l, intv, sa);
+			uint64_t sa[intv], n_sa = l - k;
+			for (j = 0; j < n_sa; ++j)
+				sa[j] = k + j;
+			mb_bwt_sa2(0, bwt, l - k, sa);
 			for (j = 0; j < n_sa; ++j)
 				xor ^= sa[j];
 			#endif
@@ -198,7 +200,6 @@ int main_seed(int argc, char *argv[])
 				for (j = 0; j < a[i].size; ++j)
 					sa[j] = mb_bwt_sa(bwt, a[i].x[0] + j);
 				#else
-				//n_sa = mb_bwt_sa_multi(0, bwt, a[i].x[0], a[i].x[0] + a[i].size, max_size_out, sa);
 				for (j = 0; j < a[i].size; ++j)
 					sa[j] = a[i].x[0] + j;
 				mb_bwt_sa2(0, bwt, a[i].size, sa);
