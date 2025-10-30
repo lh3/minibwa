@@ -5,6 +5,8 @@
 #include "l2bit.h"
 #include "bwt.h"
 
+#define MB_DBG_NO_KALLOC    (0x1LL)
+
 struct mb_idx_s {
 	l2b_t *l2b;
 	mb_bwt_t *bwt;

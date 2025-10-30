@@ -35,7 +35,7 @@ typedef struct { uint64_t x, y; } kom128_t;
 extern "C" {
 #endif
 
-extern int kom_verbose, kom_dbg;
+extern int kom_verbose, kom_dbg, kom_dbg_flag;
 
 char *kom_strdup(const char *src);
 int64_t kom_parse_num(const char *str, char **q);

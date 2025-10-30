@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include "kommon.h"
 
-int kom_verbose = 3, kom_dbg = 0;
+int kom_verbose = 3, kom_dbg = 0, kom_dbg_flag = 0;
 
 char *kom_strdup(const char *src) // strdup() doesn't conform to C99
 {
