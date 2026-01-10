@@ -122,7 +122,7 @@ static mb_bseq_file_t **mb_open_bseqs(int n, const char **fn)
 
 int32_t mb_map_file(const mb_idx_t *idx, int32_t n, const char **fn, const mb_mopt_t *opt)
 {
-	int32_t i;
+	int32_t i, pl_thread;
 	pipeline_t pl;
 	if (n < 1) return -1;
 	memset(&pl, 0, sizeof(pipeline_t));
@@ -132,7 +132,8 @@ int32_t mb_map_file(const mb_idx_t *idx, int32_t n, const char **fn, const mb_mo
 	pl.opt = opt, pl.idx = idx;
 	pl.mb_size = opt->mb_size;
 
-	kt_pipeline(3, worker_pipeline, &pl, 3);
+	pl_thread = opt->n_thread <= 2? opt->n_thread : 3;
+	kt_pipeline(pl_thread, worker_pipeline, &pl, 3);
 
 	free(pl.str.s);
 	for (i = 0; i < n; ++i)
@@ -141,15 +142,41 @@ int32_t mb_map_file(const mb_idx_t *idx, int32_t n, const char **fn, const mb_mo
 	return 0;
 }
 
+/*******
+ * CLI *
+ *******/
+
 static ko_longopt_t long_options[] = {
-	{ "version",      ko_no_argument,     901 },
+	{ "frag",         ko_required_argument, 301 },
+	{ "version",      ko_no_argument,       901 },
 	{ 0, 0, 0 }
 };
 
-static int usage(FILE *fp)
+static int usage(FILE *fp, const mb_mopt_t *opt)
 {
 	fprintf(fp, "Usage: minibwa map [options] <in.idx> <in.fastq>\n");
+	fprintf(fp, "Options:\n");
+	fprintf(fp, "  Mapping:\n");
+	fprintf(fp, "    -k INT           min k-mer length [%d]\n", opt->min_k);
+	fprintf(fp, "  Input/Output:\n");
+	fprintf(fp, "    -t INT           number of worker threads [%d]\n", opt->n_thread);
+	fprintf(fp, "    -K NUM           process NUM-bp query sequences in a batch [500m]\n");
+	fprintf(fp, "    --frag=y|n       paired-end/fragment mode [no]\n");
+	fprintf(fp, "    --version        print version number\n");
 	return fp == stdout? 0 : 1;
+}
+
+static inline void yes_or_no(mb_mopt_t *opt, uint64_t flag, int long_idx, const char *arg, int yes_to_set)
+{
+	if (yes_to_set) {
+		if (strcmp(arg, "yes") == 0 || strcmp(arg, "y") == 0) opt->flag |= flag;
+		else if (strcmp(arg, "no") == 0 || strcmp(arg, "n") == 0) opt->flag &= ~flag;
+		else fprintf(stderr, "[WARNING]\033[1;31m option '--%s' only accepts 'yes' or 'no'.\033[0m\n", long_options[long_idx].name);
+	} else {
+		if (strcmp(arg, "yes") == 0 || strcmp(arg, "y") == 0) opt->flag &= ~flag;
+		else if (strcmp(arg, "no") == 0 || strcmp(arg, "n") == 0) opt->flag |= flag;
+		else fprintf(stderr, "[WARNING]\033[1;31m option '--%s' only accepts 'yes' or 'no'.\033[0m\n", long_options[long_idx].name);
+	}
 }
 
 int main_map(int argc, char *argv[])
@@ -161,19 +188,23 @@ int main_map(int argc, char *argv[])
 
 	kom_realtime(); // reset the timer
 	mb_mopt_init(&mo);
-	while ((c = ketopt(&o, argc, argv, 1, "k:", long_options)) >= 0) {
+	while ((c = ketopt(&o, argc, argv, 1, "k:t:K:", long_options)) >= 0) {
 		if (c == 'k') mo.min_k = atoi(o.arg);
-		else if (c == 901) { // --version
+		else if (c == 't') mo.n_thread = atoi(o.arg);
+		else if (c == 'K') mo.mb_size = kom_parse_num(o.arg, 0);
+		else if (c == 301) { // --frag
+			yes_or_no(&mo, MB_F_FRAG_MODE, c, o.arg, 1);
+		} else if (c == 901) { // --version
 			puts(MB_VERSION);
 			exit(0);
 		}
 	}
 	if (argc - o.ind < 2)
-		return usage(stderr);
+		return usage(stderr, &mo);
 
 	idx = mb_idx_load(argv[o.ind]);
 	kom_assert(idx, "failed to load the index.");
-	mb_map_file(idx, argc - o.ind - 1, &argv[o.ind+1], &mo);
+	mb_map_file(idx, argc - (o.ind + 1), (const char**)&argv[o.ind+1], &mo);
 	mb_idx_destroy(idx);
 	return 0;
 }

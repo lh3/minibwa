@@ -14,6 +14,7 @@ typedef struct {
 	uint64_t flag;
 	int32_t min_k;    // min seed/k-mer length
 	int32_t n_thread; // number of worker threads, excluding I/O threads
+	int32_t max_occ;  // max SA interval size during seeding
 	int64_t mb_size;  // mini-batch size
 } mb_mopt_t;
 
