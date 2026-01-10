@@ -157,7 +157,7 @@ static int usage(FILE *fp, const mb_mopt_t *opt)
 	fprintf(fp, "Usage: minibwa map [options] <in.idx> <in.fastq>\n");
 	fprintf(fp, "Options:\n");
 	fprintf(fp, "  Mapping:\n");
-	fprintf(fp, "    -k INT           min k-mer length [%d]\n", opt->min_k);
+	fprintf(fp, "    -k INT           min k-mer length [%d]\n", opt->sopt.min_len);
 	fprintf(fp, "  Input/Output:\n");
 	fprintf(fp, "    -t INT           number of worker threads [%d]\n", opt->n_thread);
 	fprintf(fp, "    -K NUM           process NUM-bp query sequences in a batch [500m]\n");
@@ -189,7 +189,7 @@ int main_map(int argc, char *argv[])
 	kom_realtime(); // reset the timer
 	mb_mopt_init(&mo);
 	while ((c = ketopt(&o, argc, argv, 1, "k:t:K:", long_options)) >= 0) {
-		if (c == 'k') mo.min_k = atoi(o.arg);
+		if (c == 'k') mo.sopt.min_len = atoi(o.arg);
 		else if (c == 't') mo.n_thread = atoi(o.arg);
 		else if (c == 'K') mo.mb_size = kom_parse_num(o.arg, 0);
 		else if (c == 301) { // --frag

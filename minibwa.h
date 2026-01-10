@@ -11,10 +11,15 @@
 #define MB_F_FRAG_MODE        (0x8LL)    // fragment/paired-end mode
 
 typedef struct {
+	int32_t min_len; // min seed length
+	int32_t max_sub_occ; // look for shorter seed if smem occ below this value
+	int32_t max_occ; // max interval occurrence
+} mb_seedopt_t;
+
+typedef struct {
 	uint64_t flag;
-	int32_t min_k;    // min seed/k-mer length
+	mb_seedopt_t sopt;
 	int32_t n_thread; // number of worker threads, excluding I/O threads
-	int32_t max_occ;  // max SA interval size during seeding
 	int64_t mb_size;  // mini-batch size
 } mb_mopt_t;
 
