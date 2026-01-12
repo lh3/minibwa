@@ -60,9 +60,8 @@ typedef struct {
 	int64_t ts, te;         // target start and end
 	int32_t parent, n_sub, subsc;
 	int32_t mlen, blen;
-	float div;
 	uint32_t hash;
-	uint32_t rev:1, sam_pri:1, is_alt:1, inv:1, split:2, seg_split:1, strand_retained:1, dummy:24;
+	uint32_t rev:1, sam_pri:1, inv:1, split:2, seg_split:1, strand_retained:1, dummy:25;
 	int32_t seg_id;
 	mb_extra_t *p;
 } mb_hit_t;
