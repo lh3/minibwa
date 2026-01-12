@@ -84,12 +84,12 @@ void *ksw_ll_qinit(void *km, int size, int qlen, const uint8_t *query, int m, co
 	return q;
 }
 
-static inline int ksw_ll_none_greater(__m128i f, __m128i h)
+static inline int ksw_le_epi16(__m128i a, __m128i b)
 {
 #if defined(__ARM_NEON)
-	return vmaxvq_u16(vcgtq_s16(vreinterpretq_s16_u8(f), vreinterpretq_s16_u8(h))) == 0;
+	return vmaxvq_u16(vcgtq_s16(vreinterpretq_s16_u8(a), vreinterpretq_s16_u8(b))) == 0;
 #elif defined(__SSE2__)
-	return _mm_movemask_epi8(_mm_cmpgt_epi16(f, h)) == 0;
+	return _mm_movemask_epi8(_mm_cmpgt_epi16(a, b)) == 0;
 #endif
 }
 
@@ -146,7 +146,7 @@ int ksw_ll_i16(void *q_, int tlen, const uint8_t *target, int _gapo, int _gape, 
 				_mm_store_si128(H1 + j, h);
 				h = _mm_subs_epu16(h, gapoe);
 				f = _mm_subs_epu16(f, gape);
-				if (UNLIKELY(ksw_ll_none_greater(f, h))) goto end_loop_i16;
+				if (UNLIKELY(ksw_le_epi16(f, h))) goto end_loop_i16;
 			}
 		}
 end_loop_i16:
