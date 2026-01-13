@@ -10,7 +10,7 @@
 #define MB_SEED_LONG_JOIN  0x1
 #define MB_SEED_IGNORE     0x2
 #define MB_SEED_TANDEM     0x4
-#define MM_SEED_SELF       0x8
+#define MB_SEED_SELF       0x8
 
 struct mb_idx_s {
 	l2b_t *l2b;
@@ -48,7 +48,8 @@ mb_anchor_t *mb_lchain_rmq(int max_dist, int max_dist_inner, int bw, int max_chn
 						   int64_t n, mb_anchor_t *a, int *n_u_, uint64_t **_u, void *km);
 
 // defined in map-algo.c
-mb_hit_t *mb_gen_hit(void *km, uint32_t hash, int qlen, const mb_idx_t *idx, int n_u, uint64_t *u, mb_anchor_t *a);
+int32_t mb_cal_mblen(int32_t n, const mb_anchor_t *a, int32_t *blen_);
+mb_hit_t *mb_gen_hit(void *km, uint32_t hash, int qlen, const l2b_t *l2b, int n_u, uint64_t *u, mb_anchor_t *a);
 void mb_set_parent(void *km, float mask_level, int mask_len, int n, mb_hit_t *r, int sub_diff, int hard_mask_level);
 void mb_hit_sort(void *km, int *n_regs, mb_hit_t *r);
 void mb_sync_hits(void *km, int n_regs, mb_hit_t *regs);

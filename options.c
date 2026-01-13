@@ -28,9 +28,12 @@ void mb_mopt_init(mb_mopt_t *opt)
 	opt->a = 2,  opt->b = 8;
 	opt->q = 12, opt->q2 = 26;
 	opt->e = 2,  opt->e2 = 1;
+	opt->b_ambi = 1;
+	opt->end_bonus = -1;
 	opt->min_dp_max = 80;
 	opt->zdrop = 400;
 	opt->zdrop_inv = 200;
+	opt->min_ksw_len = 200;
 	// I/O options
 	opt->n_thread = 4;
 	opt->mb_size = 500000000;
@@ -47,9 +50,9 @@ int mb_set_preset(const char *preset, mb_mopt_t *opt)
 		mb_mopt_init(opt);
 		opt->flag |= MB_F_FRAG_MODE;
 		opt->max_gap = 100;
+		opt->end_bonus = 10;
 		opt->bw = opt->bw_long = 100;
 		opt->min_chain_score = 25;
-		opt->max_occ = 5000;
 		opt->mb_size = 50000000;
 	} else {
 		return -1;

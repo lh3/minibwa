@@ -83,7 +83,7 @@ int main_fastmap(int argc, char *argv[])
 									  opt.min_chain_score, opt.chn_pen_gap, opt.chn_pen_skip,
 									  v.n, v.a, &n_u, &cu, 0);
 					v.a = 0; v.n = v.m = 0; // ownership transferred to ca
-					hit = mb_gen_hit(0, 0, ks->seq.l, idx, n_u, cu, ca);
+					hit = mb_gen_hit(0, 0, ks->seq.l, idx->l2b, n_u, cu, ca);
 					mb_set_parent(0, opt.mask_level, opt.mask_len, n_u, hit, opt.sub_diff, 0);
 					for (j = 0; j < n_u; ++j) {
 						mb_hit_t *h = &hit[j];

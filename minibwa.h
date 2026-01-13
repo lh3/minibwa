@@ -10,6 +10,7 @@
 #define MB_F_COPY_COMMENT     (0x4LL)    // copy FASTX comments to output (SAM only)
 #define MB_F_FRAG_MODE        (0x8LL)    // fragment/paired-end mode
 #define MB_F_SR               (0x10LL)   // short-read mode
+#define MB_F_EQX              (0x20LL)   // = in CIGAR
 
 #define MB_CIGAR_MATCH      0
 #define MB_CIGAR_INS        1
@@ -49,11 +50,14 @@ typedef struct {
 	// alignment options
 	int32_t a, b;     // match, mismatch
 	int32_t b_ts;     // transition mismatch
+	int32_t b_ambi;   // ambiguous mismatch
 	int32_t q, q2;    // gap open, long gap open
 	int32_t e, e2;    // gap extension, long gap extension
+	int32_t end_bonus;
+	int32_t min_dp_max;
 	int32_t zdrop;
 	int32_t zdrop_inv;
-	int32_t min_dp_max;
+	int32_t min_ksw_len;
 	// input/output options
 	int32_t n_thread; // number of worker threads, excluding I/O threads
 	int64_t mb_size;  // mini-batch size
@@ -86,7 +90,7 @@ typedef struct {
 	int32_t parent, n_sub, subsc;
 	int32_t mlen, blen;
 	uint32_t hash;
-	uint32_t rev:1, sam_pri:1, inv:1, split:2, seg_split:1, dummy:26;
+	uint32_t rev:1, sam_pri:1, inv:1, split:2, split_inv:1, seg_split:1, dummy:25;
 	int32_t seg_id;
 	mb_extra_t *p;
 } mb_hit_t;

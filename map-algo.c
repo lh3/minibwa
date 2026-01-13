@@ -47,19 +47,27 @@ static inline uint64_t hash64(uint64_t x)
 	return x;
 }
 
-static inline void mb_cal_fuzzy_len(mb_hit_t *r, const mb_anchor_t *a)
+int32_t mb_cal_mblen(int32_t n, const mb_anchor_t *a, int32_t *blen_)
 {
-	int i;
-	r->mlen = r->blen = 0;
-	if (r->cnt <= 0) return;
-	r->mlen = r->blen = a[r->as].len;
-	for (i = r->as + 1; i < r->as + r->cnt; ++i) {
+	int32_t i;
+	int64_t mlen, blen;
+	*blen_ = 0;
+	if (n <= 0) return 0;
+	mlen = blen = a[0].len;
+	for (i = 1; i < n; ++i) {
 		int span = a[i].len;
 		int tl = (int32_t)a[i].tpos - (int32_t)a[i-1].tpos;
 		int ql = (int32_t)a[i].qpos - (int32_t)a[i-1].qpos;
-		r->blen += tl > ql? tl : ql;
-		r->mlen += tl > span && ql > span? span : tl < ql? tl : ql;
+		blen += tl > ql? tl : ql;
+		mlen += tl > span && ql > span? span : tl < ql? tl : ql;
 	}
+	*blen_ = blen;
+	return mlen;
+}
+
+static void mb_cal_fuzzy_len(mb_hit_t *r, const mb_anchor_t *a)
+{
+	r->mlen = mb_cal_mblen(r->cnt, &a[r->as], &r->blen);
 }
 
 static inline void mb_hit_set_coor(mb_hit_t *r, int32_t qlen, const l2b_t *l2b, const mb_anchor_t *a)
@@ -81,7 +89,7 @@ static inline void mb_hit_set_coor(mb_hit_t *r, int32_t qlen, const l2b_t *l2b, 
 	mb_cal_fuzzy_len(r, a);
 }
 
-mb_hit_t *mb_gen_hit(void *km, uint32_t hash, int qlen, const mb_idx_t *idx, int n_u, uint64_t *u, mb_anchor_t *a)
+mb_hit_t *mb_gen_hit(void *km, uint32_t hash, int qlen, const l2b_t *l2b, int n_u, uint64_t *u, mb_anchor_t *a)
 { // convert chains to hits
 	mb128_t *z, tmp;
 	mb_hit_t *r;
@@ -112,10 +120,29 @@ mb_hit_t *mb_gen_hit(void *km, uint32_t hash, int qlen, const mb_idx_t *idx, int
 		ri->hash = (uint32_t)z[i].x;
 		ri->cnt = (int32_t)z[i].y;
 		ri->as = z[i].y >> 32;
-		mb_hit_set_coor(ri, qlen, idx->l2b, a);
+		mb_hit_set_coor(ri, qlen, l2b, a);
 	}
 	kfree(km, z);
 	return r;
+}
+
+void mb_split_hit(mb_hit_t *r, mb_hit_t *r2, int n, int qlen, mb_anchor_t *a, const l2b_t *l2b)
+{
+	if (n <= 0 || n >= r->cnt) return;
+	*r2 = *r;
+	r2->id = -1;
+	r2->sam_pri = 0;
+	r2->p = 0;
+	r2->split_inv = 0;
+	r2->cnt = r->cnt - n;
+	r2->score = (int32_t)(r->score * ((float)r2->cnt / r->cnt) + .499);
+	r2->as = r->as + n;
+	if (r->parent == r->id) r2->parent = MB_PARENT_TMP_PRI;
+	mb_hit_set_coor(r2, qlen, l2b, a);
+	r->cnt -= r2->cnt;
+	r->score -= r2->score;
+	mb_hit_set_coor(r, qlen, l2b, a);
+	r->split |= 1, r2->split |= 2;
 }
 
 void mb_sync_hits(void *km, int n_regs, mb_hit_t *regs)
