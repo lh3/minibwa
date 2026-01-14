@@ -212,6 +212,11 @@ skip_uncov:
 				ri->parent = rp->parent;
 				rp->subsc = rp->subsc > sci? rp->subsc : sci;
 				if (ri->cnt >= rp->cnt) cnt_sub = 1;
+				if (rp->p && ri->p && (rp->tid != ri->tid || rp->ts != ri->ts || rp->te != ri->te || ol != min)) { // the last condition excludes identical hits after DP
+					sci = ri->p->dp_max;
+					rp->p->dp_max2 = rp->p->dp_max2 > sci? rp->p->dp_max2 : sci;
+					if (rp->p->dp_max - ri->p->dp_max <= sub_diff) cnt_sub = 1;
+				}
 				if (cnt_sub) ++rp->n_sub;
 				break;
 			}
@@ -239,6 +244,76 @@ void mb_select_sub(void *km, float pri_ratio, int min_diff, int best_n, int *n_,
 		if (k != n) mb_sync_hits(km, k, r);
 		*n_ = k;
 	}
+}
+
+void mb_hit_sort(void *km, int *n_regs, mb_hit_t *r)
+{
+	int32_t i, n_aux, n = *n_regs;
+	mb128_t *aux;
+	mb_hit_t *t;
+
+	if (n <= 1) return;
+	aux = (mb128_t*)kmalloc(km, (size_t)n * 16);
+	t = (mb_hit_t*)kmalloc(km, (size_t)n * sizeof(mb_hit_t));
+	for (i = n_aux = 0; i < n; ++i) {
+		if (r[i].inv || r[i].cnt > 0) { // squeeze out elements with cnt==0 (soft deleted)
+			int score;
+			if (r[i].p) score = r[i].p->dp_max;
+			else score = r[i].score;
+			aux[n_aux].x = (uint64_t)score << 32 | r[i].hash;
+			aux[n_aux++].y = i;
+		} else if (r[i].p) {
+			free(r[i].p);
+			r[i].p = 0;
+		}
+	}
+	radix_sort_mb128x(aux, aux + n_aux);
+	for (i = n_aux - 1; i >= 0; --i)
+		t[n_aux - 1 - i] = r[aux[i].y];
+	memcpy(r, t, sizeof(mb_hit_t) * n_aux);
+	*n_regs = n_aux;
+	kfree(km, aux);
+	kfree(km, t);
+}
+
+void mb_filter_hits(const mb_mopt_t *opt, int qlen, int *n_regs, mb_hit_t *regs)
+{
+	int i, k;
+	for (i = k = 0; i < *n_regs; ++i) {
+		mb_hit_t *r = &regs[i];
+		int flt = 0;
+		if (!r->inv && !r->seg_split && r->cnt < 3) flt = 1;
+		if (r->p) {
+			if (r->mlen < opt->min_chain_score) flt = 1;
+			else if (r->p->dp_max < opt->min_dp_max) flt = 1;
+			if (flt) free(r->p);
+		}
+		if (!flt) {
+			if (k < i) regs[k++] = regs[i];
+			else ++k;
+		}
+	}
+	*n_regs = k;
+}
+
+int mb_squeeze_a(void *km, int n_regs, mb_hit_t *regs, mb_anchor_t *a)
+{
+	int i, as = 0;
+	uint64_t *aux;
+	aux = (uint64_t*)kmalloc(km, (size_t)n_regs * 8);
+	for (i = 0; i < n_regs; ++i)
+		aux[i] = (uint64_t)regs[i].as << 32 | i;
+	radix_sort_mb64(aux, aux + n_regs);
+	for (i = 0; i < n_regs; ++i) {
+		mb_hit_t *r = &regs[(int32_t)aux[i]];
+		if (r->as != as) {
+			memmove(&a[as], &a[r->as], (size_t)r->cnt * sizeof(mb_anchor_t));
+			r->as = as;
+		}
+		as += r->cnt;
+	}
+	kfree(km, aux);
+	return as;
 }
 
 mb_hit_t *mb_map(const mb_mopt_t *opt, const mb_idx_t *idx, int64_t qlen, const char *seq0, int32_t *n_hit_, mb_tbuf_t *b, const char *qname)
@@ -269,7 +344,7 @@ mb_hit_t *mb_map(const mb_mopt_t *opt, const mb_idx_t *idx, int64_t qlen, const 
 
 	hit = mb_gen_hit(b->km, hash, qlen, idx->l2b, n_hit, w, a);
 	mb_set_parent(b->km, opt->mask_level, opt->mask_len, n_hit, hit, opt->sub_diff, 0);
-	//hit = mb_align_skeleton(km, opt, idx, qlen, seq0, &n_hit, hit, a);
+	hit = mb_align_skeleton(b->km, opt, idx, qlen, seq0, &n_hit, hit, a);
 	kfree(b->km, seq);
 	*n_hit_ = n_hit;
 	return hit;
