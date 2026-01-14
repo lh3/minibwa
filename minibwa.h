@@ -112,6 +112,8 @@ int mb_set_preset(const char *preset, mb_mopt_t *opt);
 mb_tbuf_t *mb_tbuf_init(void);
 void mb_tbuf_destroy(mb_tbuf_t *b);
 
+mb_hit_t *mb_map(const mb_mopt_t *opt, const mb_idx_t *idx, int64_t qlen, const char *seq0, int32_t *n_hit_, mb_tbuf_t *b, const char *qname);
+
 #ifdef __cplusplus
 }
 #endif

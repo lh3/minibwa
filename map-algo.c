@@ -271,5 +271,6 @@ mb_hit_t *mb_map(const mb_mopt_t *opt, const mb_idx_t *idx, int64_t qlen, const 
 	mb_set_parent(b->km, opt->mask_level, opt->mask_len, n_hit, hit, opt->sub_diff, 0);
 	//hit = mb_align_skeleton(km, opt, idx, qlen, seq0, &n_hit, hit, a);
 	kfree(b->km, seq);
+	*n_hit_ = n_hit;
 	return hit;
 }

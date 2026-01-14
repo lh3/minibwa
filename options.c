@@ -35,7 +35,7 @@ void mb_mopt_init(mb_mopt_t *opt)
 	opt->zdrop_inv = 200;
 	opt->min_ksw_len = 200;
 	// I/O options
-	opt->n_thread = 4;
+	opt->n_thread = 1; // TODO: use 4 by default in future
 	opt->seed = 11;
 	opt->mb_size = 500000000;
 	opt->max_sw_mat = 100000000;

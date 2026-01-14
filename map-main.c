@@ -15,7 +15,7 @@ typedef struct {
 	const mb_mopt_t *opt;
 	mb_bseq_file_t **fp;
 	const mb_idx_t *idx;
-	kstring_t str;
+	FILE *fp_out;
 } pipeline_t;
 
 typedef struct {
@@ -27,8 +27,17 @@ typedef struct {
 	mb_tbuf_t **tbuf;
 } step_t;
 
-static void worker_for(void *_data, long i, int tid)
+static void worker_for(void *data, long i, int tid)
 {
+	step_t *s = (step_t*)data;
+	const mb_mopt_t *opt = s->p->opt;
+	const mb_idx_t *idx = s->p->idx;
+	mb_tbuf_t *b = s->tbuf[tid];
+	int32_t j, off = s->seg_off[i];
+	for (j = 0; j < s->n_seg[i]; ++j) {
+		const mb_bseq1_t *t = &s->seq[off + j];
+		s->hit[off+j] = mb_map(opt, idx, t->l_seq, t->seq, &s->n_hit[off+j], b, t->name);
+	}
 }
 
 static void *worker_pipeline(void *shared, int step, void *in)
@@ -70,21 +79,27 @@ static void *worker_pipeline(void *shared, int step, void *in)
 		void *km = 0;
         step_t *s = (step_t*)in;
 		const mb_idx_t *idx = p->idx;
+		kstring_t out = {0,0,0};
+
 		for (i = 0; i < p->opt->n_thread; ++i)
 			mb_tbuf_destroy(s->tbuf[i]);
 		free(s->tbuf);
 		if (!(kom_dbg_flag & MB_DBG_NO_KALLOC)) km = km_init();
+
 		for (k = 0; k < s->n_frag; ++k) {
 			int32_t seg_st = s->seg_off[k], seg_en = s->seg_off[k] + s->n_seg[k];
+			out.l = 0;
 			for (i = seg_st; i < seg_en; ++i) {
 				mb_bseq1_t *t = &s->seq[i];
 				if (s->n_hit[i] > 0) { // the query has at least one hit
 					for (j = 0; j < s->n_hit[i]; ++j) {
 						const mb_hit_t *h = &s->hit[i][j];
+						mb_fmt_paf_basic(&out, idx->l2b, t->l_seq, h, t->name);
 					}
-				} else if (p->opt->flag & MB_F_WRITE_UNMAP) {
+				} else if (p->opt->flag & MB_F_WRITE_UNMAP) { // TODO: output unmapped reads
 				}
 			}
+			fwrite(out.s, 1, out.l, s->p->fp_out);
 			for (i = seg_st; i < seg_en; ++i) {
 				for (j = 0; j < s->n_hit[i]; ++j) free(s->hit[i][j].p);
 				free(s->hit[i]);
@@ -93,6 +108,8 @@ static void *worker_pipeline(void *shared, int step, void *in)
 				if (s->seq[i].comment) free(s->seq[i].comment);
 			}
 		}
+
+		free(out.s);
 		free(s->hit); free(s->n_hit); free(s->seq);
 		km_destroy(km);
 		if (kom_verbose >= 3)
@@ -120,22 +137,24 @@ static mb_bseq_file_t **mb_open_bseqs(int n, const char **fn)
 	return fp;
 }
 
-int32_t mb_map_file(const mb_idx_t *idx, int32_t n, const char **fn, const mb_mopt_t *opt)
+int32_t mb_map_file(const mb_mopt_t *opt, const mb_idx_t *idx, int32_t n, const char **fn, const char *fn_out)
 {
 	int32_t i, pl_thread;
 	pipeline_t pl;
 	if (n < 1) return -1;
 	memset(&pl, 0, sizeof(pipeline_t));
+	pl.fp_out = fn_out == 0 || strcmp(fn_out, "-") == 0? stdout : fopen(fn_out, "wb");
+	if (pl.fp_out == 0) return -1;
 	pl.n_fp = n;
 	pl.fp = mb_open_bseqs(pl.n_fp, fn);
 	if (pl.fp == 0) return -1;
 	pl.opt = opt, pl.idx = idx;
 	pl.mb_size = opt->mb_size;
-
 	pl_thread = opt->n_thread <= 2? opt->n_thread : 3;
+
 	kt_pipeline(pl_thread, worker_pipeline, &pl, 3);
 
-	free(pl.str.s);
+	if (pl.fp_out != stdout) fclose(pl.fp_out);
 	for (i = 0; i < n; ++i)
 		mb_bseq_close(pl.fp[i]);
 	free(pl.fp);
@@ -184,12 +203,14 @@ int main_map(int argc, char *argv[])
 	int32_t c;
 	mb_idx_t *idx;
 	mb_mopt_t mo;
+	char *fn_out = 0;
 	ketopt_t o = KETOPT_INIT;
 
 	kom_realtime(); // reset the timer
 	mb_mopt_init(&mo);
-	while ((c = ketopt(&o, argc, argv, 1, "k:t:K:", long_options)) >= 0) {
+	while ((c = ketopt(&o, argc, argv, 1, "o:k:t:K:", long_options)) >= 0) {
 		if (c == 'k') mo.min_len = atoi(o.arg);
+		else if (c == 'o') fn_out = o.arg;
 		else if (c == 't') mo.n_thread = atoi(o.arg);
 		else if (c == 'K') mo.mb_size = kom_parse_num(o.arg, 0);
 		else if (c == 301) { // --frag
@@ -204,7 +225,7 @@ int main_map(int argc, char *argv[])
 
 	idx = mb_idx_load(argv[o.ind]);
 	kom_assert(idx, "failed to load the index.");
-	mb_map_file(idx, argc - (o.ind + 1), (const char**)&argv[o.ind+1], &mo);
+	mb_map_file(&mo, idx, argc - (o.ind + 1), (const char**)&argv[o.ind+1], fn_out);
 	mb_idx_destroy(idx);
 	return 0;
 }
