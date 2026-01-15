@@ -80,7 +80,7 @@ static int mm_test_zdrop(void *km, const mb_opt_t *opt, const uint8_t *qseq, con
 
 	// test if there is an inversion in the most dropped region
 	q_len = pos[1][1] - pos[1][0], t_len = pos[0][1] - pos[0][0];
-	if (!(opt->flag&MB_F_SR) && max_zdrop > opt->zdrop_inv && q_len < opt->max_gap && t_len < opt->max_gap) {
+	if ((opt->flag&MB_F_LONG) && max_zdrop > opt->zdrop_inv && q_len < opt->max_gap && t_len < opt->max_gap) {
 		uint8_t *qseq2;
 		void *qp;
 		int q_off, t_off;
@@ -508,7 +508,7 @@ static inline int32_t mb_min_int32(int32_t a, int32_t b)
 
 static void mb_align1(void *km, const mb_opt_t *opt, const mb_idx_t *mi, int qlen, uint8_t *qseq0[2], mb_hit_t *r, mb_hit_t *r2, int n_a, mb_anchor_t *a, ksw_extz_t *ez)
 {
-	int32_t is_sr = !!(opt->flag & MB_F_SR);
+	int32_t is_sr = !(opt->flag & MB_F_LONG);
 	int32_t max_back = is_sr? 0 : 10; // for long reads, allow up to 10bp "edges" from chain ends
 	int32_t rev = a[r->as].sid&1, as1, cnt1;
 	uint8_t *tseq, *qseq, *tseq2 = 0;
@@ -757,7 +757,7 @@ static int mb_align1_inv(void *km, const mb_opt_t *opt, const mb_idx_t *mi, int 
 	}
 	r_inv->ts = r1->te + t_off;
 	r_inv->te = r_inv->ts + ez->max_t + 1;
-	mb_update_extra(r_inv, &qseq[q_off], &tseq[t_off], mat, opt->q, opt->e, opt->flag & MB_F_EQX, !(opt->flag & MB_F_SR));
+	mb_update_extra(r_inv, &qseq[q_off], &tseq[t_off], mat, opt->q, opt->e, opt->flag & MB_F_EQX, !!(opt->flag & MB_F_LONG));
 	ret = 1;
 end_align1_inv:
 	kfree(km, tseq);

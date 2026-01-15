@@ -18,12 +18,11 @@ struct mb_tbuf_s {
 	void *km;
 };
 
-mb_tbuf_t *mb_tbuf_init(void)
+mb_tbuf_t *mb_tbuf_init(int no_kalloc)
 {
 	mb_tbuf_t *b;
 	b = kom_calloc(mb_tbuf_t, 1);
-	if (!(kom_dbg_flag & MB_DBG_NO_KALLOC))
-		b->km = km_init();
+	if (!no_kalloc) b->km = km_init();
 	return b;
 }
 
@@ -354,5 +353,10 @@ mb_hit_t *mb_map(const mb_opt_t *opt, const mb_idx_t *idx, int64_t qlen, const c
 	kfree(b->km, a);
 	kfree(b->km, seq);
 	*n_hit_ = n_hit;
+	#if 0
+	km_stat_t kmst;
+	km_stat(b->km, &kmst);
+	assert(kmst.n_blocks == kmst.n_cores);
+	#endif
 	return hit;
 }

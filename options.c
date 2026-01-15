@@ -36,10 +36,8 @@ void mb_opt_init(mb_opt_t *opt)
 
 int mb_opt_preset(mb_opt_t *opt, const char *preset)
 {
-	if (preset == 0) {
-		mb_opt_init(opt);
-	} else if (strcmp(preset, "sr") == 0) {
-		opt->flag |= MB_F_SR | MB_F_PE;
+	if (strcmp(preset, "sr") == 0) {
+		opt->flag |= MB_F_PE;
 		opt->bw = opt->bw_long = 100;
 		opt->max_gap = 100;
 		opt->pri_ratio = 0.5f;
@@ -48,7 +46,8 @@ int mb_opt_preset(mb_opt_t *opt, const char *preset)
 		opt->min_chain_score = 25;
 		opt->mb_size = 50000000;
 	} else if (strcmp(preset, "lr") == 0 || strcmp(preset, "asm") == 0) { // TODO: to implement asm
-		opt->flag &= ~MB_F_SR;
+		opt->flag |= MB_F_LONG;
+		opt->flag &= ~MB_F_PE;
 		opt->bw = 500, opt->bw_long = 20000;
 		opt->max_gap = 5000;
 		opt->pri_ratio = 0.8f;

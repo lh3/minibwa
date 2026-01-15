@@ -58,7 +58,7 @@ static void *worker_pipeline(void *shared, int step, void *in)
 				s->seq[i].id = p->n_seq++;
 			s->tbuf = kom_calloc(mb_tbuf_t*, p->opt->n_thread);
 			for (i = 0; i < p->opt->n_thread; ++i)
-				s->tbuf[i] = mb_tbuf_init();
+				s->tbuf[i] = mb_tbuf_init(p->opt->flag&MB_F_NO_KALLOC);
 			s->n_hit = kom_calloc(int32_t, 3 * s->n_seq);
 			s->n_seg = s->n_hit + s->n_seq;
 			s->seg_off = s->n_seg + s->n_seq;
@@ -166,7 +166,7 @@ int32_t mb_map_file(const mb_opt_t *opt, const mb_idx_t *idx, int32_t n, const c
  *******/
 
 static ko_longopt_t long_options[] = {
-	{ "frag",         ko_required_argument, 301 },
+	{ "no-kalloc",    ko_no_argument,       301 },
 	{ "version",      ko_no_argument,       901 },
 	{ 0, 0, 0 }
 };
@@ -232,8 +232,8 @@ int main_map(int argc, char *argv[])
 		else if (c == 'o') fn_out = o.arg;
 		else if (c == 't') mo.n_thread = atoi(o.arg);
 		else if (c == 'K') mo.mb_size = kom_parse_num(o.arg, 0);
-		else if (c == 301) { // --frag
-			yes_or_no(&mo, MB_F_PE, c, o.arg, 1);
+		else if (c == 301) { // --no-kalloc
+			mo.flag |= MB_F_NO_KALLOC;
 		} else if (c == 901) { // --version
 			puts(MB_VERSION);
 			exit(0);
