@@ -41,14 +41,13 @@ void mb_mopt_init(mb_mopt_t *opt)
 	opt->max_sw_mat = 100000000;
 }
 
-int mb_set_preset(const char *preset, mb_mopt_t *opt)
+int mb_preset(mb_mopt_t *opt, const char *preset)
 {
 	if (preset == 0) {
 		mb_mopt_init(opt);
 	} else if (strcmp(preset, "lr:hq") == 0) { // to be added
 	} else if (strcmp(preset, "asm5") == 0) { // to be added
 	} else if (strcmp(preset, "sr") == 0) {
-		mb_mopt_init(opt);
 		opt->flag |= MB_F_SR | MB_F_FRAG_MODE;
 		opt->max_gap = 100;
 		opt->pri_ratio = 0.5f;

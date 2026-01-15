@@ -53,6 +53,25 @@ int main_fastmap(int argc, char *argv[])
 		out.l = 0;
 		for (i = 0; i < ks->seq.l; ++i)
 			ks->seq.s[i] = kom_nt4_table[(uint8_t)ks->seq.s[i]];
+		if (0) { // temporary code for debugging only; will be removed later
+			mb_sai_v u = {0,0,0};
+			mb_anchor_v v = {0,0,0};
+			mb_anchor_t *a;
+			int32_t n_hit;
+			uint64_t *w;
+			mb_mopt_t mo, *opt = &mo;
+
+			mb_mopt_init(opt);
+			mb_preset(opt, "sr");
+			mb_seed_intv(0, bwt, ks->seq.l, (uint8_t*)ks->seq.s, 19, 10, &u);
+			mb_anchor(0, idx, &u, ks->seq.l, 500, &v);
+			free(u.a);
+			a = mb_lchain_dp(0, opt->max_gap, opt->max_gap, opt->bw, opt->max_chain_skip, opt->max_chain_iter,
+							 opt->min_chain_score, opt->chn_pen_gap, opt->chn_pen_skip, v.n, v.a, &n_hit, &w);
+			v.a = 0; v.n = v.m = 0; // ownership transferred to a
+			free(a);
+			continue;
+		}
 		kom_sprintf_lite(&out, "SQ\t%s\t%ld\n", ks->name.s, ks->seq.l);
 		do {
 			x = mb_bwt_smem(bwt, ks->seq.l, (uint8_t*)ks->seq.s, x, min_len, min_occ, max_occ, &p);

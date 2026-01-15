@@ -212,7 +212,7 @@ int main_map(int argc, char *argv[])
 	mb_mopt_init(&mo);
 	while ((c = ketopt(&o, argc, argv, 1, opt_str, long_options)) >= 0) { // test command line options and apply option -x/preset first
 		if (c == 'x') {
-			if (mb_set_preset(o.arg, &mo) < 0) {
+			if (mb_preset(&mo, o.arg) < 0) {
 				fprintf(stderr, "[ERROR] unknown preset '%s'\n", o.arg);
 				return 1;
 			}

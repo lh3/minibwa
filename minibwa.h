@@ -107,7 +107,7 @@ mb_idx_t *mb_idx_load(const char *prefix);
 void mb_idx_destroy(mb_idx_t *idx);
 
 void mb_mopt_init(mb_mopt_t *opt);
-int mb_set_preset(const char *preset, mb_mopt_t *opt);
+int mb_preset(mb_mopt_t *opt, const char *preset);
 
 mb_tbuf_t *mb_tbuf_init(void);
 void mb_tbuf_destroy(mb_tbuf_t *b);
