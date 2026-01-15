@@ -84,7 +84,7 @@ static void *worker_pipeline(void *shared, int step, void *in)
 		for (i = 0; i < p->opt->n_thread; ++i)
 			mb_tbuf_destroy(s->tbuf[i]);
 		free(s->tbuf);
-		if (!(kom_dbg_flag & MB_DBG_NO_KALLOC)) km = km_init();
+		if (!(p->opt->flag & MB_F_NO_KALLOC)) km = km_init();
 
 		for (k = 0; k < s->n_frag; ++k) {
 			int32_t seg_st = s->seg_off[k], seg_en = s->seg_off[k] + s->n_seg[k];
@@ -168,6 +168,7 @@ int32_t mb_map_file(const mb_opt_t *opt, const mb_idx_t *idx, int32_t n, const c
 
 static ko_longopt_t long_options[] = {
 	{ "no-kalloc",    ko_no_argument,       301 },
+	{ "dbg-aln-seq",  ko_no_argument,       601 },
 	{ "version",      ko_no_argument,       901 },
 	{ 0, 0, 0 }
 };
@@ -181,6 +182,9 @@ static int usage(FILE *fp, const mb_opt_t *opt)
 	fprintf(fp, "    -p FLOAT         min secondary-to-primary score ratio [%g]\n", opt->pri_ratio);
 	fprintf(fp, "    -N INT           retain at most INT secondary alignments [%d]\n", opt->best_n);
 	fprintf(fp, "    -C               perform chaining only without base alignment\n");
+	fprintf(fp, "  Alignment:\n");
+	fprintf(fp, "    -A INT           matching score [%d]\n", opt->a);
+	fprintf(fp, "    -B INT           mismatching openalty [%d]\n", opt->b);
 	fprintf(fp, "  Input/Output:\n");
 	fprintf(fp, "    -t INT           number of worker threads [%d]\n", opt->n_thread);
 	fprintf(fp, "    -K NUM           process NUM-bp query sequences in a batch [500m]\n");
@@ -204,7 +208,7 @@ static inline void yes_or_no(mb_opt_t *opt, uint64_t flag, int long_idx, const c
 #endif
 int main_map(int argc, char *argv[])
 {
-	const char *opt_str = "x:o:k:p:t:K:N:CS";
+	const char *opt_str = "x:o:k:p:A:B:b:O:E:t:K:N:CS";
 	int32_t c;
 	mb_idx_t *idx;
 	mb_opt_t mo;
@@ -231,6 +235,8 @@ int main_map(int argc, char *argv[])
 		if (c == 'k') mo.min_len = atoi(o.arg);
 		else if (c == 'p') mo.pri_ratio = atof(o.arg);
 		else if (c == 'N') mo.best_n = atoi(o.arg);
+		else if (c == 'A') mo.a = atoi(o.arg);
+		else if (c == 'B') mo.b = atoi(o.arg);
 		else if (c == 'C') mo.flag |= MB_F_NO_ALN;
 		else if (c == 'S') mo.flag |= MB_F_OUT_2ND;
 		else if (c == 'o') fn_out = o.arg;
@@ -238,6 +244,8 @@ int main_map(int argc, char *argv[])
 		else if (c == 'K') mo.mb_size = kom_parse_num(o.arg, 0);
 		else if (c == 301) { // --no-kalloc
 			mo.flag |= MB_F_NO_KALLOC;
+		} else if (c == 601) { // --dbg-aln-seq
+			kom_dbg_flag |= MB_DBG_ALN_SEQ;
 		} else if (c == 901) { // --version
 			puts(MB_VERSION);
 			exit(0);

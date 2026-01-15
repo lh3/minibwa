@@ -6,7 +6,7 @@
 #include "bwt.h"
 #include "kommon.h"
 
-#define MB_DBG_NO_KALLOC    (0x1LL)
+#define MB_DBG_ALN_SEQ     (0x1LL)
 
 #define MB_SEED_LONG_JOIN  0x1
 #define MB_SEED_IGNORE     0x2

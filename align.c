@@ -330,7 +330,6 @@ static void mb_append_cigar(mb_hit_t *r, uint32_t n_cigar, const uint32_t *cigar
 static void mb_align_pair(void *km, const mb_opt_t *opt, int qlen, const uint8_t *qseq, int tlen, const uint8_t *tseq,
 						  const int8_t *mat, int w, int end_bonus, int zdrop, int ksw_flag, ksw_extz_t *ez)
 {
-	//fprintf(stderr, "%d:%d\n", tlen, qlen);
 	if (opt->b_ts != 0 && opt->b != opt->b_ts)
 		ksw_flag |= KSW_EZ_GENERIC_SC;
 	if (opt->max_sw_mat > 0 && (int64_t)tlen * qlen > opt->max_sw_mat) { // too much memory; skip alignment
@@ -340,6 +339,14 @@ static void mb_align_pair(void *km, const mb_opt_t *opt, int qlen, const uint8_t
 		ksw_extz2_sse(km, qlen, qseq, tlen, tseq, 5, mat, opt->q, opt->e, w, zdrop, end_bonus, ksw_flag, ez);
 	} else { // dual affine gap
 		ksw_extd2_sse(km, qlen, qseq, tlen, tseq, 5, mat, opt->q, opt->e, opt->q2, opt->e2, w, zdrop, end_bonus, ksw_flag, ez);
+	}
+	if (kom_dbg_flag & MB_DBG_ALN_SEQ) {
+		int i;
+		fprintf(stderr, "===> q=(%d,%d), e=(%d,%d), bw=%d, ksw_flag=0x%x, zdrop=%d, end_bonus=%d <===\n", opt->q, opt->q2, opt->e, opt->e2, w, ksw_flag, opt->zdrop, end_bonus);
+		for (i = 0; i < tlen; ++i) fputc("ACGTN"[tseq[i]], stderr); fputc('\n', stderr);
+		for (i = 0; i < qlen; ++i) fputc("ACGTN"[qseq[i]], stderr); fputc('\n', stderr);
+		fprintf(stderr, "score=%d, max=%d, cigar=", ez->score, ez->max);
+		for (i = 0; i < ez->n_cigar; ++i) fprintf(stderr, "%d%c", ez->cigar[i]>>4, MB_CIGAR_STR[ez->cigar[i]&0xf]); fprintf(stderr, "\n");
 	}
 }
 
@@ -802,10 +809,10 @@ mb_hit_t *mb_align_skeleton(void *km, const mb_opt_t *opt, const mb_idx_t *mi, i
 			}
 		}
 	}
-	*n_regs_ = n_regs;
 	kfree(km, qseq0[0]);
 	kfree(km, ez.cigar);
-	mb_filter_hits(opt, qlen, n_regs_, regs);
-	mb_hit_sort(km, n_regs_, regs);
+	mb_filter_hits(opt, qlen, &n_regs, regs);
+	mb_hit_sort(km, &n_regs, regs);
+	*n_regs_ = n_regs;
 	return regs;
 }
