@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define MB_MAGIC "MBW\1"
+#define MB_MAGIC "MBW\2"
 
 typedef struct {
 	uint64_t primary; // S^{-1}(0), or the primary index of BWT

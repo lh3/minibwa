@@ -44,6 +44,9 @@ void mb_bwt_destroy(mb_bwt_t *bwt)
 
 #define raw_B00(b, k) ((b)[(k)>>4]>>((~(k)&0xf)<<1)&3)
 
+#define BWT_CNT_SHIFT 56
+#define BWT_CNT_MASK ((1ULL<<BWT_CNT_SHIFT) - 1)
+
 static uint64_t mb_bwt_data_len(uint64_t len)
 {
 	uint64_t bwt_len, occ_len;
@@ -54,7 +57,7 @@ static uint64_t mb_bwt_data_len(uint64_t len)
 
 mb_bwt_t *mb_bwt_init_from_raw(int is_byte, const void *raw_, uint64_t len, uint64_t primary)
 {
-	uint64_t c[4], x[4], i, k;
+	uint64_t c[4], x[4], i, k, *last_c = 0;
 	mb_bwt_t *bwt;
 	const uint32_t *raw32 = is_byte? 0 : (const uint32_t*)raw_;
 	const uint8_t *raw8 = is_byte? (const uint8_t*)raw_ : 0;
@@ -67,15 +70,19 @@ mb_bwt_t *mb_bwt_init_from_raw(int is_byte, const void *raw_, uint64_t len, uint
 
 	memset(c, 0, 32);
 	for (i = k = 0; i < len; ++i) {
-		uint8_t a = is_byte? raw8[i]&3 : raw_B00(raw32, i);
-		if ((i & 0x7f) == 0) {
+		uint8_t j, a = is_byte? raw8[i]&3 : raw_B00(raw32, i);
+		if ((i & 0x7f) == 0) { // hard coded: each block encodes 128bp
 			if (i > 0) {
 				memcpy(&bwt->data[k], x, 32);
 				k += 4;
 			}
+			last_c = &bwt->data[k];
 			memcpy(&bwt->data[k], c, 32);
 			k += 4;
 			memset(x, 0, 32);
+		} else if ((i & 0x3f) == 0 && last_c) {
+			for (j = 0; j < 4; ++j)
+				last_c[j] |= (c[j] - last_c[j]) << BWT_CNT_SHIFT;
 		}
 		++c[a];
 		x[(i&0x7f)>>5] |= (uint64_t)a << ((i&0x1f)<<1); // compatible with little endian
@@ -115,19 +122,33 @@ static inline int rank_aux1(uint64_t y, uint8_t c)
 uint64_t mb_bwt_rank11(const mb_bwt_t *bwt, uint64_t k, uint8_t c)
 {
 	const uint64_t *p, *end;
-	uint64_t n;
+	uint64_t n, mask;
 	if (k == 0) return 0;
 	if (k == bwt->seq_len + 1) return bwt->L2[c+1] - bwt->L2[c];
 	--k;
 	k -= (k >= bwt->primary); // because $ is not in bwt
+	mask = (k&0x7f) >= 64? (1ULL << (64 - BWT_CNT_SHIFT)) - 1 : 0;
 	p = bwt_block(bwt, k);
-	n = p[c];
-	p += 4;
+	n = (p[c] & BWT_CNT_MASK) + ((p[c] >> BWT_CNT_SHIFT) & mask);
+	p += 4; // p points to 2-bit encoded BWT
 	end = p + ((k&0x7f) >> 5);
+	p += (k&0x7f) >= 64? 2 : 0;
 	for (; p < end; ++p) n += rank_aux1(*p, c);
 	n += rank_aux1(*p << ((~k&0x1f) << 1), c);
 	if (c == 0) n -= ~k&0x1f;
 	return n;
+}
+
+static inline const uint32_t *seek_block(const mb_bwt_t *bwt, uint64_t k, uint64_t cnt[4])
+{
+	const uint64_t *p;
+	uint64_t mask = (k&0x7f) >= 64? (1ULL << (64 - BWT_CNT_SHIFT)) - 1 : 0;
+	p = bwt_block(bwt, k);
+	cnt[0] = (p[0] & BWT_CNT_MASK) + ((p[0] >> BWT_CNT_SHIFT) & mask);
+	cnt[1] = (p[1] & BWT_CNT_MASK) + ((p[1] >> BWT_CNT_SHIFT) & mask);
+	cnt[2] = (p[2] & BWT_CNT_MASK) + ((p[2] >> BWT_CNT_SHIFT) & mask);
+	cnt[3] = (p[3] & BWT_CNT_MASK) + ((p[3] >> BWT_CNT_SHIFT) & mask);
+	return (const uint32_t*)(p + 4);
 }
 
 static inline uint32_t rank_aux4(const mb_bwt_t *bwt, uint32_t x)
@@ -138,7 +159,6 @@ static inline uint32_t rank_aux4(const mb_bwt_t *bwt, uint32_t x)
 void mb_bwt_rank1a(const mb_bwt_t *bwt, uint64_t k, uint64_t cnt[4])
 {
 	const uint32_t *q, *end;
-	const uint64_t *p;
 	uint32_t x, tmp;
 	if (k == 0) {
 		memset(cnt, 0, 4 * sizeof(uint64_t));
@@ -146,10 +166,9 @@ void mb_bwt_rank1a(const mb_bwt_t *bwt, uint64_t k, uint64_t cnt[4])
 	}
 	--k;
 	k -= (k >= bwt->primary); // because $ is not in bwt
-	p = bwt_block(bwt, k); // p points to the block start
-	memcpy(cnt, p, 4 * sizeof(uint64_t));
-	q = (const uint32_t*)(p + 4); // 8 32-bit integers in each block
+	q = seek_block(bwt, k, cnt);
 	end = q + ((k&0x7f) >> 4);
+	q += (k&0x7f) >= 64? 4 : 0;
 	for (x = 0; q < end; ++q) x += rank_aux4(bwt, *q); // NB: this assumes little endian
 	tmp = *q << ((~k&0xf) << 1);
 	x += rank_aux4(bwt, tmp) - (~k&0xf);
@@ -167,16 +186,14 @@ void mb_bwt_rank2a(const mb_bwt_t *bwt, uint64_t k, uint64_t l, uint64_t cntk[4]
 		mb_bwt_rank1a(bwt, k, cntk);
 		mb_bwt_rank1a(bwt, l, cntl);
 	} else {
-		const uint64_t *p;
 		const uint32_t *q, *endk, *endl;
 		uint32_t x, y, tmp;
 		k = k1, l = l1;
-		p = bwt_block(bwt, k);
-		memcpy(cntk, p, 4 * sizeof(uint64_t));
-		q = (const uint32_t*)(p + 4);
+		q = seek_block(bwt, k, cntk);
 		// prepare cntk[]
 		endk = q + ((k&0x7f) >> 4);
 		endl = q + ((l&0x7f) >> 4);
+		q += (k&0x7f) >= 64? 4 : 0;
 		for (x = 0; q < endk; ++q) x += rank_aux4(bwt, *q);
 		y = x;
 		tmp = *q << ((~k&0xf) << 1);
