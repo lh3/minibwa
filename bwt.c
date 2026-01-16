@@ -199,7 +199,7 @@ void mb_bwt_rank2a(const mb_bwt_t *bwt, uint64_t k, uint64_t l, uint64_t cntk[4]
 		mb_bwt_block_prefetch(bwt, l);
 		mb_bwt_rank1a(bwt, k, cntk);
 		mb_bwt_rank1a(bwt, l, cntl);
-	} else if (l - k == 1) {
+	} else if (l - k == 1) { // we can use a simpler procedure
 		uint64_t z = k - (k > bwt->primary);
 		mb_bwt_rank1a(bwt, k, cntk);
 		memcpy(cntl, cntk, 4 * sizeof(uint64_t));
@@ -258,13 +258,13 @@ int64_t mb_bwt_smem(const mb_bwt_t *f, uint32_t len, const uint8_t *q, int64_t x
 	for (i = x, xn = -1; i < x + min_len; ++i) // find the last N in [x,x+min_len)
 		if (q[i] > 3) xn = i;
 	if (xn >= 0) return xn + 1;
-	if (f->pre && min_len > f->pre_len) {
+	if (f->pre && min_len > f->pre_len) { // then use precomputed k-mer index instead of base-by-base extension
 		uint64_t z = 0, l = 0;
-		for (i = x + min_len - 1; l < f->pre_len; --i, ++l)
+		for (i = x + min_len - 1; l < f->pre_len; --i, ++l) // get the k-mer
 			z = z << 2 | q[i];
 		ik = f->pre[z];
 	}
-	if (ik.size < min_occ) {
+	if (ik.size < min_occ) { // then we need to use the standard procedure
 		mb_bwt_set_intv(f, q[x + min_len - 1], &ik);
 		i = x + min_len - 2;
 	}
@@ -377,7 +377,7 @@ typedef struct {
 	int d, c;
 } count_pair64_t;
 
-void mb_bwt_count_kmer(const mb_bwt_t *bwt, int32_t depth, mb_sai_t *s)
+void mb_bwt_count_kmer(const mb_bwt_t *bwt, int32_t depth, mb_sai_t *s) // adapted from kount in ropebwt3
 {
 	count_pair64_t *p, stack[64];
 	int32_t i, a, s_top = 0;
@@ -400,7 +400,7 @@ void mb_bwt_count_kmer(const mb_bwt_t *bwt, int32_t depth, mb_sai_t *s)
 				p->p = ok[a];
 				p->d = top.d + 1;
 				p->c = a;
-			} else {
+			} else { // reaching the length; store in s[]
 				uint64_t x = 0;
 				for (i = 0; i < depth; ++i)
 					x |= (uint64_t)str[i] << i * 2;
