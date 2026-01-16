@@ -91,7 +91,7 @@ mb_bwt_t *mb_bwt_init_from_raw(int is_byte, const void *raw_, uint64_t len, uint
 				last_c[j] |= (c[j] - last_c[j]) << BWT_CNT_SHIFT;
 		}
 		++c[a];
-		x[(i&0x7f)>>5] |= (uint64_t)a << ((i&0x1f)<<1); // compatible with little endian
+		x[(i&0x7f)>>5] |= (uint64_t)a << ((i&0x1f)<<1); // little endian
 	}
 	// the last block
 	memcpy(&bwt->data[k], x, 32);
@@ -110,6 +110,10 @@ mb_bwt_t *mb_bwt_init_from_raw(int is_byte, const void *raw_, uint64_t len, uint
  ********/
 
 #define bwt_block(b, k) ((b)->data + ((k)>>7<<3))
+
+// retrieve a character from the $-removed BWT string. Note that mb_bwt_t::data is
+// not exactly the BWT string and therefore this macro is called bwt_B0 instead of bwt_B
+#define bwt_B0(b, k) ((b)->data[((k)>>7<<3) + 4 + (((k)&127)>>5)] >> (((k)&31)<<1) & 3)
 
 static inline void mb_bwt_block_prefetch(const mb_bwt_t *bwt, uint64_t k)
 {
@@ -195,6 +199,11 @@ void mb_bwt_rank2a(const mb_bwt_t *bwt, uint64_t k, uint64_t l, uint64_t cntk[4]
 		mb_bwt_block_prefetch(bwt, l);
 		mb_bwt_rank1a(bwt, k, cntk);
 		mb_bwt_rank1a(bwt, l, cntl);
+	} else if (l - k == 1) {
+		uint64_t z = k - (k > bwt->primary);
+		mb_bwt_rank1a(bwt, k, cntk);
+		memcpy(cntl, cntk, 4 * sizeof(uint64_t));
+		++cntl[bwt_B0(bwt, z)];
 	} else {
 		const uint32_t *q, *endk, *endl;
 		uint32_t x, y, tmp;
@@ -282,10 +291,6 @@ int64_t mb_bwt_smem(const mb_bwt_t *f, uint32_t len, const uint8_t *q, int64_t x
 /***************************
  * Suffix array operations *
  ***************************/
-
-// retrieve a character from the $-removed BWT string. Note that mb_bwt_t::data is
-// not exactly the BWT string and therefore this macro is called bwt_B0 instead of bwt_B
-#define bwt_B0(b, k) ((b)->data[((k)>>7<<3) + 4 + (((k)&127)>>5)] >> (((k)&31)<<1) & 3)
 
 static inline uint64_t bwt_invPsi(const mb_bwt_t *bwt, uint64_t k) // compute inverse CSA
 {
