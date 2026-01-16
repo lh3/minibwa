@@ -344,11 +344,10 @@ static void mb_align_pair(void *km, const mb_opt_t *opt, int qlen, const uint8_t
 						  const int8_t *mat, int w, int end_bonus, int zdrop, int ksw_flag, ksw_extz_t *ez)
 {
 	const int max_bw_adj_len = 100; // don't adjust bandwidth if sequences are too long
-	int32_t n_mm = -1;
+	int32_t j, n_mm = -1;
 	if (opt->b_ts != 0 && opt->b != opt->b_ts) { // distinguish ts vs tv
 		ksw_flag |= KSW_EZ_GENERIC_SC;
 	} else if ((ksw_flag & KSW_EZ_EXTZ_ONLY) && tlen >= qlen) { // ungapped extension
-		int32_t j;
 		ksw_reset_extz(ez);
 		for (j = 0, ez->score = ez->max = 0; j < qlen; ++j) {
 			if (qseq[j] >= 4 || tseq[j] >= 4) ez->score -= opt->b_ambi, ++n_mm;
@@ -364,13 +363,13 @@ static void mb_align_pair(void *km, const mb_opt_t *opt, int qlen, const uint8_t
 			}
 		}
 	} else if (qlen == tlen && !(ksw_flag & KSW_EZ_EXTZ_ONLY)) { // ungapped alignment; TODO: make it work with generic scoring matrix
-		int32_t j, n_mm = 0, max_gapped_score = (qlen - 2) * opt->a - 2 * (opt->q + opt->e);
+		int32_t max_gapped_score = (qlen - 2) * opt->a - 2 * (opt->q + opt->e);
 		ksw_reset_extz(ez);
 		for (j = 0, ez->score = 0; j < qlen; ++j) {
 			if (qseq[j] >= 4 || tseq[j] >= 4) ez->score -= opt->b_ambi, ++n_mm;
 			else ez->score += qseq[j] == tseq[j]? opt->a : -opt->b, n_mm += (qseq[j] != tseq[j]);
 		}
-		if (n_mm <= 2 || ez->score > max_gapped_score) {
+		if (n_mm <= 3 || ez->score > max_gapped_score) {
 			ez->cigar = ksw_push_cigar(km, &ez->n_cigar, &ez->m_cigar, ez->cigar, MB_CIGAR_MATCH, qlen);
 			return;
 		}
