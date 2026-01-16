@@ -41,7 +41,7 @@ int mb_opt_preset(mb_opt_t *opt, const char *preset)
 		opt->bw = opt->bw_long = 100;
 		opt->max_gap = 100;
 		opt->pri_ratio = 0.5f;
-		opt->best_n = 20;
+		opt->best_n = 501; // match ::max_occ
 		opt->end_bonus = 10;
 		opt->min_chain_score = 25;
 		opt->mb_size = 50000000;

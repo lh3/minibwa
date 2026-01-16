@@ -327,13 +327,28 @@ static void mb_append_cigar(mb_hit_t *r, uint32_t n_cigar, const uint32_t *cigar
 	}
 }
 
+static inline int32_t mb_min_int32(int32_t a, int32_t b)
+{
+	return a < b? a : b;
+}
+
+static inline int32_t max_bw_from_mm(const mb_opt_t *opt, int32_t mm)
+{
+	int32_t x = mm * (opt->a + opt->b), max2 = 0, max1 = 0;
+	if (x >= opt->q  + opt->e)  max1 = (x - opt->q  + opt->e  - 1) / opt->e;
+	if (x >= opt->q2 + opt->e2) max2 = (x - opt->q2 + opt->e2 - 1) / opt->e2;
+	return max1 > max2? max1 : max2;
+}
+
 static void mb_align_pair(void *km, const mb_opt_t *opt, int qlen, const uint8_t *qseq, int tlen, const uint8_t *tseq,
 						  const int8_t *mat, int w, int end_bonus, int zdrop, int ksw_flag, ksw_extz_t *ez)
 {
+	const int max_bw_adj_len = 100; // don't adjust bandwidth if sequences are too long
+	int32_t n_mm = -1;
 	if (opt->b_ts != 0 && opt->b != opt->b_ts) { // distinguish ts vs tv
 		ksw_flag |= KSW_EZ_GENERIC_SC;
 	} else if ((ksw_flag & KSW_EZ_EXTZ_ONLY) && tlen >= qlen) { // ungapped extension
-		int32_t j, n_mm = 0;
+		int32_t j;
 		ksw_reset_extz(ez);
 		for (j = 0, ez->score = ez->max = 0; j < qlen; ++j) {
 			if (qseq[j] >= 4 || tseq[j] >= 4) ez->score -= opt->b_ambi, ++n_mm;
@@ -348,7 +363,6 @@ static void mb_align_pair(void *km, const mb_opt_t *opt, int qlen, const uint8_t
 				return;
 			}
 		}
-		if (w > n_mm * 2) w = n_mm * 2;
 	} else if (qlen == tlen && !(ksw_flag & KSW_EZ_EXTZ_ONLY)) { // ungapped alignment; TODO: make it work with generic scoring matrix
 		int32_t j, n_mm = 0, max_gapped_score = (qlen - 2) * opt->a - 2 * (opt->q + opt->e);
 		ksw_reset_extz(ez);
@@ -360,7 +374,12 @@ static void mb_align_pair(void *km, const mb_opt_t *opt, int qlen, const uint8_t
 			ez->cigar = ksw_push_cigar(km, &ez->n_cigar, &ez->m_cigar, ez->cigar, MB_CIGAR_MATCH, qlen);
 			return;
 		}
-		if (w > n_mm * 2) w = n_mm * 2;
+	}
+
+	if (n_mm >= 0 && mb_min_int32(qlen, tlen) < max_bw_adj_len) { // n_mm >= 0 => ungapped alignment attempted
+		int32_t max_bw;
+		max_bw = max_bw_from_mm(opt, n_mm);
+		if (w > max_bw + 4) w = max_bw + 4;
 	}
 
 	if (opt->max_sw_mat > 0 && (int64_t)tlen * qlen > opt->max_sw_mat) { // too much memory; skip alignment
@@ -542,11 +561,6 @@ static void mb_max_stretch(const mb_hit_t *r, const mb_anchor_t *a, int32_t *as,
 	*as = max_i, *cnt = max_len;
 }
 
-static inline int32_t mb_min_int32(int32_t a, int32_t b)
-{
-	return a < b? a : b;
-}
-
 static void mb_align1(void *km, const mb_opt_t *opt, const mb_idx_t *mi, int qlen, uint8_t *qseq0[2], mb_hit_t *r, mb_hit_t *r2, int n_a, mb_anchor_t *a, ksw_extz_t *ez)
 {
 	int32_t is_sr = !(opt->flag & MB_F_LONG);
@@ -655,7 +669,8 @@ static void mb_align1(void *km, const mb_opt_t *opt, const mb_idx_t *mi, int qle
 	te1 = ts, qe1 = qs;
 	assert(qs1 >= 0 && ts1 >= 0);
 
-	for (i = is_sr? cnt1 - 1 : 0; i < cnt1; ++i) { // gap filling; for short genomic reads, fill from the first seed to the last
+//	for (i = is_sr? cnt1 - 1 : 0; i < cnt1; ++i) { // gap filling; for short genomic reads, fill from the first seed to the last
+	for (i = 0; i < cnt1; ++i) { // gap filling
 		if ((a[as1+i].flag & MB_SEED_IGNORE) && i != cnt1 - 1) continue;
 		te = a[as1+i].tpos + 1 - mb_min_int32(a[as1+i].len>>1, max_back);
 		qe = a[as1+i].qpos + 1 - mb_min_int32(a[as1+i].len>>1, max_back);
