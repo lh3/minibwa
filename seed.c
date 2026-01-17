@@ -57,6 +57,8 @@ static int32_t mb_bwt_seed_greedy(const mb_bwt_t *bwt, int32_t len, const uint8_
 			ik = ok[c];
 		} else return i + 1;
 	}
+	*p = ik;
+	p->info = (uint64_t)x<<32 | len;
 	return len;
 }
 
