@@ -25,7 +25,6 @@ void mb_opt_init(mb_opt_t *opt)
 	opt->b_ambi = 1;
 	opt->zdrop = 400;
 	opt->zdrop_inv = 200;
-	opt->min_ksw_len = 200;
 	// I/O options
 	opt->n_thread = 1;
 	opt->seed = 11;
@@ -44,6 +43,7 @@ int mb_opt_preset(mb_opt_t *opt, const char *preset)
 		opt->best_n = 501; // match ::max_occ
 		opt->end_bonus = 10;
 		opt->min_chain_score = 25;
+		opt->min_ksw_len = 20;
 		opt->mb_size = 50000000;
 	} else if (strcmp(preset, "lr") == 0 || strcmp(preset, "asm") == 0) { // TODO: to implement asm
 		opt->flag |= MB_F_LONG;
@@ -54,6 +54,7 @@ int mb_opt_preset(mb_opt_t *opt, const char *preset)
 		opt->best_n = 5;
 		opt->end_bonus = -1;
 		opt->min_chain_score = 40;
+		opt->min_ksw_len = 200;
 		opt->mb_size = 500000000;
 	} else {
 		return -1;

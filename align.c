@@ -565,7 +565,7 @@ static void mb_align1(void *km, const mb_opt_t *opt, const mb_idx_t *mi, int qle
 	int32_t is_sr = !(opt->flag & MB_F_LONG);
 	int32_t max_back = is_sr? 0 : 10; // for long reads, allow up to 10bp "edges" from chain ends
 	int32_t rev = a[r->as].sid&1, as1, cnt1;
-	uint8_t *tseq, *qseq, *tseq2 = 0;
+	uint8_t *tseq = 0, *qseq;
 	int32_t i, bw, bw_long, dropped = 0, ksw_flag = 0, qs0, qe0;
 	int64_t tid = a[r->as].sid >> 1, l;
 	int64_t ts0, te0;
@@ -745,7 +745,6 @@ static void mb_align1(void *km, const mb_opt_t *opt, const mb_idx_t *mi, int qle
 		mb_update_extra(r, qseq, tseq, mat, opt->q, opt->e, opt->flag & MB_F_EQX, !is_sr);
 	}
 
-	if (tseq2) kfree(km, tseq2);
 	kfree(km, tseq);
 }
 

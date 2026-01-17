@@ -282,7 +282,7 @@ void mb_filter_hits(const mb_opt_t *opt, int qlen, int *n_regs, mb_hit_t *regs)
 	int i, k;
 	for (i = k = 0; i < *n_regs; ++i) {
 		mb_hit_t *r = &regs[i];
-		int flt = 0;
+		int flt = r->flt;
 		if (r->p) {
 			if (r->mlen < opt->min_chain_score) flt = 1;
 			else if (r->p->dp_max < opt->min_dp_max) flt = 1;

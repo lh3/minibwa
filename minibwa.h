@@ -94,7 +94,7 @@ typedef struct {
 	int32_t mlen, blen;
 	int32_t mapq;
 	uint32_t hash;
-	uint32_t rev:1, sam_pri:1, inv:1, split:2, split_inv:1, seg_split:1, dummy:25;
+	uint32_t rev:1, sam_pri:1, flt:1, inv:1, split:2, split_inv:1, dummy:25;
 	int32_t seg_id;
 	mb_extra_t *p;
 } mb_hit_t;
