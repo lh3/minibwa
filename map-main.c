@@ -47,6 +47,53 @@ static void worker_for(void *data, long i, int tid)
 	}
 }
 
+static void worker_for_batch(void *data, long i, int tid)
+{
+	step_t *s = (step_t*)data;
+	const mb_opt_t *opt = s->p->opt;
+	const mb_idx_t *idx = s->p->idx;
+	mb_tbuf_t *b = s->tbuf[tid];
+	void *km;
+	int32_t n, j, k, l, p, *len;
+	uint8_t **seq;
+	mb_sai_v *sai;
+
+	km = mb_tbuf_km(b);
+	for (k = 0, n = 0; k < s->sb_cnt[i]; ++k)
+		n += s->seg_cnt[s->sb_off[i] + k];
+	len = Kmalloc(km, int32_t, n);
+	seq = Kmalloc(km, uint8_t*, n);
+	sai = Kcalloc(km, mb_sai_v, n);
+	for (k = p = 0; k < s->sb_cnt[i]; ++k) {
+		int32_t off = s->seg_off[s->sb_off[i] + k];
+		int32_t cnt = s->seg_cnt[s->sb_off[i] + k];
+		for (j = 0; j < cnt; ++j) {
+			const mb_bseq1_t *t = &s->seq[off + j];
+			len[p] = t->l_seq;
+			seq[p] = Kcalloc(km, uint8_t, t->l_seq);
+			for (l = 0; l < t->l_seq; ++l)
+				seq[p][l] = kom_nt4_table[(uint8_t)t->seq[i]];
+			++p;
+		}
+	}
+	assert(p == n);
+	mb_seed_intv_batch(km, idx->bwt, n, len, seq, opt->min_len, opt->max_sub_occ, sai);
+	fprintf(stderr, "here: %ld\n", i);
+	for (k = p = 0; k < s->sb_cnt[i]; ++k) {
+		int32_t off = s->seg_off[s->sb_off[i] + k];
+		int32_t cnt = s->seg_cnt[s->sb_off[i] + k];
+		for (j = 0; j < cnt; ++j) {
+			const mb_bseq1_t *t = &s->seq[off + j];
+			s->hit[off+j] = mb_map_sai(opt, idx, len[p], seq[p], &sai[p], &s->n_hit[off+j], b, t->name);
+			kfree(km, seq[p]);
+			++p;
+		}
+	}
+	kfree(km, sai);
+	kfree(km, seq);
+	kfree(km, len);
+}
+
 static void *worker_pipeline(void *shared, int step, void *in)
 {
 	int i, j, k;
@@ -97,7 +144,11 @@ static void *worker_pipeline(void *shared, int step, void *in)
 			return s;
 		} else free(s);
     } else if (step == 1) { // step 1: map
-		kt_for(p->opt->n_thread, worker_for, in, ((step_t*)in)->n_sb);
+        step_t *s = (step_t*)in;
+		if (1 || s->n_sb == s->n_frag)
+			kt_for(p->opt->n_thread, worker_for, in, s->n_sb);
+		else
+			kt_for(p->opt->n_thread, worker_for_batch, in, s->n_sb);
 		return in;
     } else if (step == 2) { // step 2: output
 		void *km = 0;

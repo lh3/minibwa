@@ -28,6 +28,11 @@ mb_tbuf_t *mb_tbuf_init(int no_kalloc)
 	return b;
 }
 
+void *mb_tbuf_km(mb_tbuf_t *b)
+{
+	return b->km;
+}
+
 void mb_tbuf_destroy(mb_tbuf_t *b)
 {
 	if (b->km) km_destroy(b->km);

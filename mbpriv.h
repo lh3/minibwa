@@ -42,7 +42,7 @@ void mb_bwtgen(const char *fn_pac, const char *fn_bwt, int block_size);
 
 // defined in seed.c
 void mb_seed_intv(void *km, const mb_bwt_t *bwt, int32_t len, const uint8_t *seq, int32_t min_len, int32_t max_sub_occ, mb_sai_v *v);
-void mb_seed_intv_batch(void *km, const mb_bwt_t *bwt, int32_t n_seq, int32_t *len, const uint8_t **seq, int32_t min_len, int32_t max_sub_occ, mb_sai_v *v);
+void mb_seed_intv_batch(void *km, const mb_bwt_t *bwt, int32_t n_seq, int32_t *len, uint8_t *const* seq, int32_t min_len, int32_t max_sub_occ, mb_sai_v *v);
 void mb_anchor(void *km, const mb_idx_t *idx, mb_sai_v *u, int32_t qlen, int32_t max_occ, mb_anchor_v *v);
 
 // defined in lchain.c
@@ -52,6 +52,7 @@ mb_anchor_t *mb_lchain_rmq(void *km, int max_dist, int max_dist_inner, int bw, i
 						   int64_t n, mb_anchor_t *a, int *n_u_, uint64_t **_u);
 
 // defined in map-algo.c
+void *mb_tbuf_km(mb_tbuf_t *b);
 int32_t mb_cal_mblen(int32_t n, const mb_anchor_t *a, int32_t *blen_);
 mb_hit_t *mb_gen_hit(void *km, uint32_t hash, int qlen, const l2b_t *l2b, int n_u, uint64_t *u, mb_anchor_t *a);
 void mb_set_parent(void *km, float mask_level, int mask_len, int n, mb_hit_t *r, int sub_diff, int hard_mask_level);
@@ -61,6 +62,8 @@ void mb_select_sub(void *km, float pri_ratio, int min_diff, int best_n, int *n_,
 void mb_filter_hits(const mb_opt_t *opt, int qlen, int *n_regs, mb_hit_t *regs);
 int mb_squeeze_a(void *km, int n_regs, mb_hit_t *regs, mb_anchor_t *a);
 void mb_split_hit(mb_hit_t *r, mb_hit_t *r2, int n, int qlen, mb_anchor_t *a, const l2b_t *l2b);
+
+mb_hit_t *mb_map_sai(const mb_opt_t *opt, const mb_idx_t *idx, int64_t qlen, const uint8_t *seq, mb_sai_v *u, int32_t *n_hit_, mb_tbuf_t *b, const char *qname);
 
 // defined in format.c
 void mb_fmt_paf_basic(kstring_t *s, const l2b_t *l2b, int64_t qlen, const mb_hit_t *p, const char *qname);
