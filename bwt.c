@@ -315,6 +315,7 @@ static void tq_init(void *km, tiny_queue_t *q, int32_t n)
 	q->cap = n;
 	kom_roundup32(q->cap);
 	q->a = Kcalloc(km, int32_t, q->cap);
+	q->front = q->count = 0;
 }
 
 static inline void tq_push(tiny_queue_t *q, int32_t x)

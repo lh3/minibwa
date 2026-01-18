@@ -53,21 +53,21 @@ static void write_intv(const mb_idx_t *idx, const mb_sai_t *p, int32_t max_size_
 	kom_sprintf_lite(out, "\n");
 }
 
-static void process_batch(const mb_idx_t *idx, int32_t n, batch_seq1_t *t, int32_t min_len, int32_t min_occ, int32_t max_size_out, kstring_t *out)
+static void process_batch(const mb_idx_t *idx, int32_t n, batch_seq1_t *t, int32_t min_len, int32_t min_occ, int32_t max_size_out, uint64_t *sa, kstring_t *out)
 {
 	int32_t i, j;
-	uint64_t *sa;
 	batch_smem(idx, n, t, min_len, min_occ);
-	sa = kom_calloc(uint64_t, max_size_out);
 	for (i = 0; i < n; ++i) {
 		batch_seq1_t *ti = &t[i];
+		out->l = 0;
 		kom_sprintf_lite(out, "SQ\t%s\t%d\n", ti->name, ti->l_seq);
 		for (j = 0; j < ti->v.n; ++j)
 			write_intv(idx, &ti->v.a[j], max_size_out, sa, out);
+		free(ti->name);
+		free(ti->seq);
+		kom_sprintf_lite(out, "//\n");
+		fputs(out->s, stdout);
 	}
-	kom_sprintf_lite(out, "//\n");
-	fputs(out->s, stdout);
-	free(sa);
 }
 
 int main_fastmap(int argc, char *argv[])
@@ -81,8 +81,8 @@ int main_fastmap(int argc, char *argv[])
 	uint64_t *sa, m_a = 0;
 	mb_sai_t *a = 0;
 	kstring_t out = {0};
-	int32_t n_seq;
-	batch_seq1_t *seq;
+	int32_t n_seq = 0;
+	batch_seq1_t *seq = 0;
 
 	while ((c = ketopt(&o, argc, argv, 1, "l:s:w:b:", 0)) >= 0) {
 		if (c == 'l') min_len = atoi(o.arg);
@@ -97,6 +97,7 @@ int main_fastmap(int argc, char *argv[])
 		fprintf(stderr, "  -l INT     min seed length [%d]\n", min_len);
 		fprintf(stderr, "  -s INT     min interval size [%d]\n", min_occ);
 		fprintf(stderr, "  -w INT     max interval size to output coordinates [%d]\n", max_size_out);
+		fprintf(stderr, "  -b INT     batch size [%d]\n", max_seq);
 		return 1;
 	}
 
@@ -106,11 +107,22 @@ int main_fastmap(int argc, char *argv[])
 	fp = strcmp(argv[o.ind+1], "-")? gzopen(argv[o.ind+1], "rb") : gzdopen(0, "rb");
 	ks = kseq_init(fp);
 	sa = kom_calloc(uint64_t, max_size_out);
+	if (max_seq > 1) seq = kom_calloc(batch_seq1_t, max_seq);
 	while (kseq_read(ks) >= 0) {
 		int64_t i;
 		for (i = 0; i < ks->seq.l; ++i)
 			ks->seq.s[i] = kom_nt4_table[(uint8_t)ks->seq.s[i]];
 		if (max_seq > 1) {
+			batch_seq1_t *s;
+			if (n_seq == max_seq) {
+				process_batch(idx, n_seq, seq, min_len, min_occ, max_size_out, sa, &out);
+				n_seq = 0;
+			}
+			s = &seq[n_seq++];
+			s->l_seq = ks->seq.l;
+			s->name = kom_strdup(ks->name.s);
+			s->seq = kom_malloc(uint8_t, s->l_seq);
+			memcpy(s->seq, ks->seq.s, s->l_seq);
 		} else {
 			int64_t x = 0, n_a = 0;
 			mb_sai_t p;
@@ -129,6 +141,8 @@ int main_fastmap(int argc, char *argv[])
 			fputs(out.s, stdout);
 		}
 	}
+	if (max_seq > 1)
+		process_batch(idx, n_seq, seq, min_len, min_occ, max_size_out, sa, &out); // TODO: then free seq[]
 	free(sa);
 	kseq_destroy(ks);
 	gzclose(fp);
