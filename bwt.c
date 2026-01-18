@@ -246,9 +246,11 @@ void mb_bwt_extend(const mb_bwt_t *bwt, const mb_sai_t *ik, mb_sai_t ok[4], int 
 	ok[0].x[is_back] = ok[1].x[is_back] + tl[1];
 }
 
-static int64_t mb_bwt_back_init(const mb_bwt_t *f, const uint8_t *q, int64_t st, int64_t pos, int64_t min_occ, mb_sai_t *p)
+// backward search from pos
+static int64_t mb_bwt_back(const mb_bwt_t *f, const uint8_t *q, int64_t st, int64_t pos, int64_t min_occ, mb_sai_t *p)
 {
 	int64_t i;
+	mb_sai_t ok[4];
 	assert(q[pos] < 4); // the backward pass never involves N
 	if (f->pre && pos - st >= f->pre_len) { // then use precomputed k-mer index instead of base-by-base extension
 		uint64_t z = 0, l = 0;
@@ -261,15 +263,6 @@ static int64_t mb_bwt_back_init(const mb_bwt_t *f, const uint8_t *q, int64_t st,
 		mb_bwt_set_intv(f, q[pos], p);
 		i = pos - 1;
 	}
-	return i;
-}
-
-// backward search from pos
-static int64_t mb_bwt_back(const mb_bwt_t *f, const uint8_t *q, int64_t st, int64_t pos, int64_t min_occ, mb_sai_t *p)
-{
-	int64_t i;
-	mb_sai_t ok[4];
-	i = mb_bwt_back_init(f, q, st, pos, min_occ, p);
 	for (; i >= st; --i) { // backward extension
 		int c = q[i];
 		if (c > 3) break;
@@ -389,23 +382,23 @@ void mb_bwt_smem_batch(void *km, const mb_bwt_t *bwt, int32_t n, mb_smem_entry_t
 				continue; // IMPORTANT: this skips the tq_push() at the end of this long while loop
 			for (i = s->x, xn = -1; i < s->x + s->min_len; ++i) // find the position of the last N
 				if (s->q[i] > 3) xn = i;
-			if (xn >= 0) { // skip N and stay in stage1
+			if (xn >= 0) { // skip N and stay in stage 1
 				s->x = xn + 1;
 			} else {
 				s->i = s->x + s->min_len - 1;
-				if (bwt->pre && s->min_len >= bwt->pre_len) {
+				if (bwt->pre && s->min_len >= bwt->pre_len) { // get k-mer for prefetch
 					for (i = 0, s->kmer = 0; i < bwt->pre_len; ++i, s->i--)
-						s->kmer = s->kmer << 2 | s->q[s->i];
+						s->kmer = s->kmer << 2 | s->q[s->i]; // backward pass shouldn't meet N
 					__builtin_prefetch(&bwt->pre[s->kmer]);
 					s->stage = 2;
-				} else {
+				} else { // skip stage 2
 					mb_bwt_set_intv(bwt, s->q[s->i--], &s->p);
 					s->stage = 3;
 				}
 			}
 		} else if (s->stage == 2 || s->stage == 5) { // k-mer lookup
 			s->p = bwt->pre[s->kmer];
-			if (s->p.size < s->min_occ) {
+			if (s->p.size < s->min_occ) { // jumped too far with the k-mer cache; revert
 				s->i += bwt->pre_len;
 				mb_bwt_set_intv(bwt, s->q[s->i--], &s->p);
 			}
@@ -422,7 +415,7 @@ void mb_bwt_smem_batch(void *km, const mb_bwt_t *bwt, int32_t n, mb_smem_entry_t
 				s->p.info = (uint64_t)s->x << 32 | s->i;
 				Kgrow(km, mb_sai_t, s->v->a, s->v->n, s->v->m);
 				s->v->a[s->v->n++] = s->p; // save the interval
-				continue; // trigger termination
+				continue; // trigger termination as tq_push() at the end of the loop is skipped
 			} else {
 				int32_t i, c = 3 - (int32_t)s->q[s->i];
 				if (c >= 0) mb_bwt_extend(bwt, &s->p, ok, 0);
@@ -435,15 +428,15 @@ void mb_bwt_smem_batch(void *km, const mb_bwt_t *bwt, int32_t n, mb_smem_entry_t
 					s->p.info = (uint64_t)s->x << 32 | s->i;
 					Kgrow(km, mb_sai_t, s->v->a, s->v->n, s->v->m);
 					s->v->a[s->v->n++] = s->p; // save the interval
-					if (c < 0) { // if N, move back to stage 1
+					if (c < 0) { // if N, skip it and move back to stage 1
 						s->x = s->i + 1;
 						s->stage = 1;
-					} else if (bwt->pre && s->i - s->x - 1 >= bwt->pre_len) {
+					} else if (bwt->pre && s->i - s->x - 1 >= bwt->pre_len) { // get k-mer
 						for (i = 0, s->kmer = 0; i < bwt->pre_len; ++i, s->i--)
 							s->kmer = s->kmer << 2 | s->q[s->i];
 						__builtin_prefetch(&bwt->pre[s->kmer]);
 						s->stage = 5;
-					} else {
+					} else { // skip stage 5
 						mb_bwt_set_intv(bwt, s->q[s->i--], &s->p);
 						s->stage = 6;
 					}
