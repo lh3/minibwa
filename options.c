@@ -11,8 +11,6 @@ void mb_opt_init(mb_opt_t *opt)
 	// chaining options
 	opt->max_chain_skip = 25;
 	opt->max_chain_iter = 5000;
-	opt->rmq_inner_dist = 1000;
-	opt->rmq_size_cap = 100000;
 	opt->chain_gap_scale = 0.8f;
 	opt->chain_skip_scale = 0.0f;
 	// hit processing options

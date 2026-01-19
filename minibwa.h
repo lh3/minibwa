@@ -39,8 +39,6 @@ typedef struct {
 	int32_t max_chain_skip;
 	int32_t max_chain_iter;
 	int32_t min_chain_score; // min chaining score
-	int32_t rmq_inner_dist; // RMQ inner distance
-	int32_t rmq_size_cap; // RMQ size cap
 	float chain_gap_scale;
 	float chain_skip_scale;
 	// hit processing options
