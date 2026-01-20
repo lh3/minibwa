@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define MB_VERSION "0.0-r165-dirty"
+#define MB_VERSION "0.0-r166-dirty"
 
 #define MB_F_SAM              (0x1LL)    // output in the SAM format
 #define MB_F_WRITE_UNMAP      (0x2LL)    // output unmapped query sequences
@@ -40,7 +40,6 @@ typedef struct {
 	int32_t max_chain_iter;
 	int32_t min_chain_score; // min chaining score
 	float chain_gap_scale;
-	float chain_skip_scale;
 	// hit processing options
 	float mask_level;
 	int32_t mask_len;

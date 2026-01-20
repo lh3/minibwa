@@ -422,7 +422,7 @@ mb_hit_t *mb_map_sai(const mb_opt_t *opt, const mb_idx_t *idx, int64_t qlen, con
 	uint32_t hash;
 	int32_t n_hit;
 	uint64_t *w;
-	float chn_pen_gap, chn_pen_skip;
+	float chn_pen_gap;
 	mb_anchor_v v = {0,0,0};
 	mb_anchor_t *a;
 	mb_hit_t *hit;
@@ -434,12 +434,11 @@ mb_hit_t *mb_map_sai(const mb_opt_t *opt, const mb_idx_t *idx, int64_t qlen, con
 
 	// initial chaining
 	chn_pen_gap = opt->chain_gap_scale * .01 * opt->min_len;
-	chn_pen_skip = opt->chain_skip_scale * .01 * opt->min_len;
 	if (kom_dbg_flag & MB_DBG_SEED) mb_dbg_seed(u->n, u->a, qname);
 	mb_anchor(b->km, idx, u, qlen, opt->max_occ, &v);
 	if (kom_dbg_flag & MB_DBG_ANCHOR) mb_dbg_anchor(idx, qlen, v.n, v.a, qname);
 	a = mb_lchain_dp(b->km, opt->max_gap, opt->max_gap, opt->bw, opt->max_chain_skip, opt->max_chain_iter,
-					 opt->min_chain_score, chn_pen_gap, chn_pen_skip, v.n, v.a, &n_hit, &w);
+					 opt->min_chain_score, chn_pen_gap, v.n, v.a, &n_hit, &w);
 	v.a = 0; v.n = v.m = 0; // ownership transferred to a
 	kfree(b->km, u->a); // no longer needed
 	u->n = 0, u->a = 0;

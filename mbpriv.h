@@ -46,10 +46,8 @@ void mb_seed_intv_batch(void *km, const mb_bwt_t *bwt, int32_t n_seq, int32_t *l
 void mb_anchor(void *km, const mb_idx_t *idx, mb_sai_v *u, int32_t qlen, int32_t max_occ, mb_anchor_v *v);
 
 // defined in lchain.c
-mb_anchor_t *mb_lchain_dp(void *km, int max_dist_x, int max_dist_y, int bw, int max_skip, int max_iter, int min_sc, float chn_pen_gap, float chn_pen_skip,
+mb_anchor_t *mb_lchain_dp(void *km, int max_dist_x, int max_dist_y, int bw, int max_skip, int max_iter, int min_sc, float chn_pen_gap,
 						  int64_t n, mb_anchor_t *a, int *n_u_, uint64_t **_u);
-mb_anchor_t *mb_lchain_rmq(void *km, int max_dist, int max_dist_inner, int bw, int max_chn_skip, int cap_rmq_size, int min_sc, float chn_pen_gap, float chn_pen_skip,
-						   int64_t n, mb_anchor_t *a, int *n_u_, uint64_t **_u);
 
 // defined in map-algo.c
 void *mb_tbuf_km(mb_tbuf_t *b);

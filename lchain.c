@@ -128,7 +128,7 @@ static mb_anchor_t *compact_a(void *km, int32_t n_u, uint64_t *u, int32_t n_v, i
 }
 
 // Compute chaining score between two anchors
-static inline int32_t comput_sc(const mb_anchor_t *ai, const mb_anchor_t *aj, int32_t max_dist_x, int32_t max_dist_y, int32_t bw, float chn_pen_gap, float chn_pen_skip)
+static inline int32_t comput_sc(const mb_anchor_t *ai, const mb_anchor_t *aj, int32_t max_dist_x, int32_t max_dist_y, int32_t bw, float chn_pen_gap)
 {
 	int64_t dq = ai->qpos - aj->qpos, dr, dd, dg, q_span, sc;
 	if (dq <= 0 || dq > max_dist_x + ai->len) return INT32_MIN;
@@ -145,7 +145,7 @@ static inline int32_t comput_sc(const mb_anchor_t *ai, const mb_anchor_t *aj, in
 	sc = q_span < dg? q_span : dg;
 	if (dd || dg > q_span) {
 		float lin_pen, log_pen;
-		lin_pen = chn_pen_gap * (float)dd + chn_pen_skip * (float)dg;
+		lin_pen = chn_pen_gap * (float)dd;
 		log_pen = dd >= 1? mb_log2(dd + 1) : 0.0f;
 		sc -= (int)(lin_pen + .5f * log_pen);
 	}
@@ -162,7 +162,7 @@ static inline int32_t comput_sc(const mb_anchor_t *ai, const mb_anchor_t *aj, in
  *   u[]: score<<32 | #anchors (sum of lower 32 bits of u[] is the returned length of a[])
  * input a[] is deallocated on return
  */
-mb_anchor_t *mb_lchain_dp(void *km, int max_dist_x, int max_dist_y, int bw, int max_skip, int max_iter, int min_sc, float chn_pen_gap, float chn_pen_skip,
+mb_anchor_t *mb_lchain_dp(void *km, int max_dist_x, int max_dist_y, int bw, int max_skip, int max_iter, int min_sc, float chn_pen_gap,
 						  int64_t n, mb_anchor_t *a, int *n_u_, uint64_t **_u)
 { // TODO: make sure this works when n has more than 32 bits
 	int32_t *f, *t, *v, n_u, n_v, mmax_f = 0, max_drop = bw;
@@ -189,7 +189,7 @@ mb_anchor_t *mb_lchain_dp(void *km, int max_dist_x, int max_dist_y, int bw, int 
 		if (i - st > max_iter) st = i - max_iter;
 		for (j = i - 1; j >= st; --j) {
 			int32_t sc;
-			sc = comput_sc(&a[i], &a[j], max_dist_x, max_dist_y, bw, chn_pen_gap, chn_pen_skip);
+			sc = comput_sc(&a[i], &a[j], max_dist_x, max_dist_y, bw, chn_pen_gap);
 			if (sc == INT32_MIN) continue;
 			sc += f[j];
 			if (sc > max_f) {
@@ -210,7 +210,7 @@ mb_anchor_t *mb_lchain_dp(void *km, int max_dist_x, int max_dist_y, int bw, int 
 		}
 		if (max_ii >= 0 && max_ii < end_j) {
 			int32_t tmp;
-			tmp = comput_sc(&a[i], &a[max_ii], max_dist_x, max_dist_y, bw, chn_pen_gap, chn_pen_skip);
+			tmp = comput_sc(&a[i], &a[max_ii], max_dist_x, max_dist_y, bw, chn_pen_gap);
 			if (tmp != INT32_MIN && max_f < tmp + f[max_ii])
 				max_f = tmp + f[max_ii], max_j = max_ii;
 		}

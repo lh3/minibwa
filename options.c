@@ -11,7 +11,6 @@ void mb_opt_init(mb_opt_t *opt)
 	opt->max_chain_skip = 25;
 	opt->max_chain_iter = 5000;
 	opt->chain_gap_scale = 0.8f;
-	opt->chain_skip_scale = 0.0f;
 	// hit processing options
 	opt->mask_level = 0.5f;
 	opt->mask_len = 0x7fffffff;
