@@ -81,9 +81,9 @@ static void *worker_pipeline(void *shared, int step, void *in)
     pipeline_t *p = (pipeline_t*)shared;
 	const mb_opt_t *opt = p->opt;
     if (step == 0) { // step 0: read sequences
-		int with_qual = !!(p->opt->flag & MB_F_SAM);
-		int with_comment = (!!(p->opt->flag & MB_F_SAM) && !!(p->opt->flag & MB_F_COPY_COMMENT));
-		int frag_mode = (p->n_fp > 1 || !!(p->opt->flag & MB_F_PE));
+		int with_qual = !!(opt->flag & MB_F_SAM);
+		int with_comment = (!!(opt->flag & MB_F_SAM) && !!(opt->flag & MB_F_COPY_COMMENT));
+		int frag_mode = (p->n_fp > 1 || !!(opt->flag & MB_F_PE));
         step_t *s;
         s = kom_calloc(step_t, 1);
 		if (p->n_fp > 1) s->seq = mb_bseq_read_frag(p->n_fp, p->fp, p->mb_size, with_qual, with_comment, &s->n_seq);
@@ -93,9 +93,9 @@ static void *worker_pipeline(void *shared, int step, void *in)
 			s->p = p;
 			for (i = 0; i < s->n_seq; ++i)
 				s->seq[i].id = p->n_seq++;
-			s->tbuf = kom_calloc(mb_tbuf_t*, p->opt->n_thread);
-			for (i = 0; i < p->opt->n_thread; ++i)
-				s->tbuf[i] = mb_tbuf_init(p->opt->flag&MB_F_NO_KALLOC);
+			s->tbuf = kom_calloc(mb_tbuf_t*, opt->n_thread);
+			for (i = 0; i < opt->n_thread; ++i)
+				s->tbuf[i] = mb_tbuf_init(opt->flag&MB_F_NO_KALLOC);
 			s->n_hit = kom_calloc(int32_t, 5 * s->n_seq); // maybe over allocation as the following 4 members may not need this much
 			s->seg_off = s->n_hit   + s->n_seq;
 			s->seg_cnt = s->seg_off + s->n_seq;
@@ -127,7 +127,15 @@ static void *worker_pipeline(void *shared, int step, void *in)
 			return s;
 		} else free(s);
     } else if (step == 1) { // step 1: map
-		kt_for(p->opt->n_thread, worker_for_batch, in, ((step_t*)in)->n_sb);
+		step_t *s = (step_t*)in;
+		kt_for(opt->n_thread, worker_for_batch, in, s->n_sb);
+		if (opt->flag & MB_F_PE) {
+			void *km;
+			km = opt->flag & MB_F_NO_KALLOC? 0 : km_init();
+			mb_pestat_t pes[4];
+			mb_pestat(km, opt, s->n_frag, s->seg_off, s->seg_cnt, s->n_hit, s->hit, pes);
+			if (km) km_destroy(km);
+		}
 		return in;
     } else if (step == 2) { // step 2: output
 		void *km = 0;
@@ -135,10 +143,10 @@ static void *worker_pipeline(void *shared, int step, void *in)
 		const mb_idx_t *idx = p->idx;
 		kstring_t out = {0,0,0};
 
-		for (i = 0; i < p->opt->n_thread; ++i)
+		for (i = 0; i < opt->n_thread; ++i)
 			mb_tbuf_destroy(s->tbuf[i]);
 		free(s->tbuf);
-		if (!(p->opt->flag & MB_F_NO_KALLOC)) km = km_init();
+		if (!(opt->flag & MB_F_NO_KALLOC)) km = km_init();
 
 		for (k = 0; k < s->n_frag; ++k) {
 			int32_t seg_st = s->seg_off[k], seg_en = s->seg_off[k] + s->seg_cnt[k], n_sec = 0;
@@ -150,12 +158,12 @@ static void *worker_pipeline(void *shared, int step, void *in)
 						const mb_hit_t *h = &s->hit[i][j];
 						if (h->parent == h->id) { // primary
 							mb_fmt_paf_basic(&out, idx->l2b, t->l_seq, h, t->name);
-						} else if (n_sec < p->opt->out_n) { // secondary
+						} else if (n_sec < opt->out_n) { // secondary
 							mb_fmt_paf_basic(&out, idx->l2b, t->l_seq, h, t->name);
 							++n_sec;
 						}
 					}
-				} else if (p->opt->flag & MB_F_WRITE_UNMAP) { // TODO: output unmapped reads
+				} else if (opt->flag & MB_F_WRITE_UNMAP) { // TODO: output unmapped reads
 				}
 			}
 			fwrite(out.s, 1, out.l, s->p->fp_out);

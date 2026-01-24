@@ -30,6 +30,12 @@ typedef struct {
 
 typedef struct { int64_t n, m; mb_anchor_t *a; } mb_anchor_v;
 
+typedef struct {
+	int low, high;   // lower and upper bounds within which a read pair is considered to be properly paired
+	int failed;      // non-zero if the orientation is not supported by sufficient data
+	double avg, std; // mean and stddev of the insert size distribution
+} mb_pestat_t;
+
 typedef struct { uint64_t x, y; } mb128_t;
 void radix_sort_mb128x(mb128_t *beg, mb128_t *end);
 
@@ -63,11 +69,16 @@ void mb_split_hit(mb_hit_t *r, mb_hit_t *r2, int n, int qlen, mb_anchor_t *a, co
 
 mb_hit_t *mb_map_sai(const mb_opt_t *opt, const mb_idx_t *idx, int64_t qlen, const uint8_t *seq, mb_sai_v *u, int32_t *n_hit_, mb_tbuf_t *b, const char *qname);
 
+void radix_sort_mb64(uint64_t *st, uint64_t *en);
+
 // defined in format.c
 void mb_fmt_paf_basic(kstring_t *s, const l2b_t *l2b, int64_t qlen, const mb_hit_t *p, const char *qname);
 
 // defined in align.c
 mb_hit_t *mb_align_skeleton(void *km, const mb_opt_t *opt, const mb_idx_t *mi, int qlen, const uint8_t *seq, int *n_regs_, mb_hit_t *regs, mb_anchor_t *a);
+
+// defined in pe.c
+void mb_pestat(void *km, const mb_opt_t *opt, int32_t n_seg, const int32_t *seg_off, const int32_t *seg_cnt, const int32_t *n_hit, mb_hit_t *const *hit, mb_pestat_t pes[4]);
 
 // Fast log2 approximation (from minimap2)
 static inline float mb_log2(float x) // NB: this doesn't work when x<2

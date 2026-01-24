@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define MB_VERSION "0.0-r167-dirty"
+#define MB_VERSION "0.0-r168-dirty"
 
 #define MB_F_SAM              (0x1LL)    // output in the SAM format
 #define MB_F_WRITE_UNMAP      (0x2LL)    // output unmapped query sequences
@@ -56,6 +56,8 @@ typedef struct {
 	int32_t zdrop;
 	int32_t zdrop_inv;
 	int32_t min_ksw_len;
+	// pairing options
+	int32_t max_pe_ins;
 	// input/output options
 	int32_t sb_len;   // number of bases for batch smem
 	int32_t sb_seq;   // number of sequences for batch smem

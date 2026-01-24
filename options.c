@@ -21,6 +21,8 @@ void mb_opt_init(mb_opt_t *opt)
 	opt->b_ambi = 1;
 	opt->zdrop = 400;
 	opt->zdrop_inv = 200;
+	// pairing options
+	opt->max_pe_ins = 10000;
 	// I/O options
 	opt->sb_len = 1000000;
 	opt->sb_seq = 24;
