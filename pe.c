@@ -4,7 +4,6 @@
 #include "mbpriv.h"
 #include "kalloc.h"
 
-#define MIN_RATIO     0.8
 #define MIN_DIR_CNT   10
 #define MIN_DIR_RATIO 0.05
 #define OUTLIER_BOUND 2.0
@@ -46,16 +45,17 @@ void mb_pestat(void *km, const mb_opt_t *opt, int32_t n_frag, const int32_t *seg
 	}
 	if (kom_verbose >= 3)
 		fprintf(stderr, "[M::%s] # candidate unique pairs for (FF, FR, RF, RR): (%d, %d, %d, %d)\n", __func__, is[0].n, is[1].n, is[2].n, is[3].n);
+	for (d = 0, max = 0; d < 4; ++d)
+		max = max > is[d].n? max : is[d].n;
 	for (d = 0; d < 4; ++d) {
 		mb_pestat_t *r = &pes[d];
 		q = &is[d];
 		int p25, p50, p75, x;
-		if (q->n < MIN_DIR_CNT) {
-			fprintf(stderr, "[M::%s] skip orientation %c%c as there are not enough pairs\n", __func__, "FR"[d>>1&1], "FR"[d&1]);
+		if (q->n < MIN_DIR_CNT || q->n < max * MIN_DIR_RATIO) {
 			r->failed = 1;
 			kfree(km, q->a);
 			continue;
-		} else fprintf(stderr, "[M::%s] analyzing insert size distribution for orientation %c%c...\n", __func__, "FR"[d>>1&1], "FR"[d&1]);
+		}
 		radix_sort_mb64(q->a, q->a + q->n);
 		p25 = q->a[(int)(.25 * q->n + .499)];
 		p50 = q->a[(int)(.50 * q->n + .499)];
@@ -63,8 +63,6 @@ void mb_pestat(void *km, const mb_opt_t *opt, int32_t n_frag, const int32_t *seg
 		r->low  = (int)(p25 - OUTLIER_BOUND * (p75 - p25) + .499);
 		if (r->low < 1) r->low = 1;
 		r->high = (int)(p75 + OUTLIER_BOUND * (p75 - p25) + .499);
-		fprintf(stderr, "[M::%s] (25, 50, 75) percentile: (%d, %d, %d)\n", __func__, p25, p50, p75);
-		fprintf(stderr, "[M::%s] low and high boundaries for computing mean and std.dev: (%d, %d)\n", __func__, r->low, r->high);
 		for (i = x = 0, r->avg = 0; i < q->n; ++i)
 			if (q->a[i] >= r->low && q->a[i] <= r->high)
 				r->avg += q->a[i], ++x;
@@ -73,21 +71,14 @@ void mb_pestat(void *km, const mb_opt_t *opt, int32_t n_frag, const int32_t *seg
 			if (q->a[i] >= r->low && q->a[i] <= r->high)
 				r->std += (q->a[i] - r->avg) * (q->a[i] - r->avg);
 		r->std = sqrt(r->std / x);
-		fprintf(stderr, "[M::%s] mean and std.dev: (%.2f, %.2f)\n", __func__, r->avg, r->std);
+		fprintf(stderr, "[M::%s::%c%c] (25, 50, 75) percentile: (%d, %d, %d); mean and std.dev: (%.2f, %.2f)\n",
+			__func__, "FR"[d>>1&1], "FR"[d&1], p25, p50, p75, r->avg, r->std);
 		r->low  = (int)(p25 - MAPPING_BOUND * (p75 - p25) + .499);
 		r->high = (int)(p75 + MAPPING_BOUND * (p75 - p25) + .499);
 		if (r->low  > r->avg - MAX_STDDEV * r->std) r->low  = (int)(r->avg - MAX_STDDEV * r->std + .499);
 		if (r->high < r->avg + MAX_STDDEV * r->std) r->high = (int)(r->avg + MAX_STDDEV * r->std + .499);
 		if (r->low < 1) r->low = 1;
-		fprintf(stderr, "[M::%s] low and high boundaries for proper pairs: (%d, %d)\n", __func__, r->low, r->high);
+		fprintf(stderr, "[M::%s::%c%c] low and high boundaries for proper pairs: (%d, %d)\n", __func__, "FR"[d>>1&1], "FR"[d&1], r->low, r->high);
 		kfree(km, q->a);
-	}
-	for (d = 0, max = 0; d < 4; ++d)
-		max = max > is[d].n? max : is[d].n;
-	for (d = 0; d < 4; ++d) {
-		if (pes[d].failed == 0 && is[d].n < max * MIN_DIR_RATIO) {
-			pes[d].failed = 1;
-			fprintf(stderr, "[M::%s] skip orientation %c%c\n", __func__, "FR"[d>>1&1], "FR"[d&1]);
-		}
 	}
 }
