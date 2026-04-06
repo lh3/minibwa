@@ -99,7 +99,7 @@ static void *worker_pipeline(void *shared, int step, void *in)
 	const mb_opt_t *opt = p->opt;
     if (step == 0) { // step 0: read sequences
 		int with_qual = !!(opt->flag & MB_F_SAM);
-		int with_comment = (!!(opt->flag & MB_F_SAM) && !!(opt->flag & MB_F_COPY_COMMENT));
+		int with_comment = !!(opt->flag & MB_F_COPY_COMMENT);
 		int frag_mode = (p->n_fp > 1 || !!(opt->flag & MB_F_PE));
         step_t *s;
         s = kom_calloc(step_t, 1);
@@ -326,7 +326,7 @@ static inline void yes_or_no(mb_opt_t *opt, uint64_t flag, int long_idx, const c
 #endif
 int main_map(int argc, char *argv[])
 {
-	const char *opt_str = "x:o:k:c:m:p:A:B:b:O:E:t:K:N:CP";
+	const char *opt_str = "x:o:k:c:m:p:A:B:b:O:E:t:K:N:CPy";
 	int32_t c;
 	mb_idx_t *idx;
 	mb_opt_t mo;
@@ -358,6 +358,7 @@ int main_map(int argc, char *argv[])
 		else if (c == 'A') mo.a = atoi(o.arg);
 		else if (c == 'B') mo.b = atoi(o.arg);
 		else if (c == 'C') mo.flag |= MB_F_NO_ALN;
+		else if (c == 'y') mo.flag |= MB_F_COPY_COMMENT;
 		else if (c == 'P') mo.flag &= ~MB_F_PE;
 		else if (c == 'o') fn_out = o.arg;
 		else if (c == 't') mo.n_thread = atoi(o.arg);

@@ -7,7 +7,7 @@
 
 #define MB_F_SAM              (0x1LL)    // output in the SAM format
 #define MB_F_WRITE_UNMAP      (0x2LL)    // output unmapped query sequences
-#define MB_F_COPY_COMMENT     (0x4LL)    // copy FASTX comments to output (SAM only)
+#define MB_F_COPY_COMMENT     (0x4LL)    // copy FASTX comments to output
 #define MB_F_PE               (0x8LL)    // paired-end mode
 #define MB_F_LONG             (0x10LL)   // long-sequence mode
 #define MB_F_EQX              (0x20LL)   // = in CIGAR

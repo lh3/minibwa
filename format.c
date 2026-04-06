@@ -27,5 +27,7 @@ void mb_fmt_paf(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, c
 	}
 	if (opt_flag & (MB_F_WRITE_DS|MB_F_WRITE_CS|MB_F_WRITE_MD))
 		kom_sprintf_lite(s, "\t%s", (char*)&p->p->cigar[p->p->n_cigar]);
+	if ((opt_flag & MB_F_COPY_COMMENT) && t->comment)
+		kom_sprintf_lite(s, "\t%s", t->comment);
 	kom_sprintf_lite(s, "\n");
 }

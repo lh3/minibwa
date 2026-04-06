@@ -63,7 +63,7 @@ void mb_write_cs_ds_core(void *km, kstring_t *s, const uint8_t *tseq, const uint
 						l_tmp = 0;
 					}
 					km_sprintf_lite(km, s, "*%c%c", "acgtn"[tseq[t_off + j]], "acgtn"[qseq[q_off + j]]);
-				}
+				} else ++l_tmp;
 			}
 			if (l_tmp > 0)
 				km_sprintf_lite(km, s, ":%d", l_tmp);
@@ -116,4 +116,3 @@ void mb_write_cs_ds_core(void *km, kstring_t *s, const uint8_t *tseq, const uint
 	kfree(km, tmp);
 	assert(t_off == r->te - r->ts && q_off == r->qe - r->qs);
 }
-
