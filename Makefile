@@ -17,7 +17,7 @@ ifneq ($(asan),)
 endif
 
 ifneq ($(omp),0)
-	CPPFLAGS=-DLIBSAIS_OPENMP
+	CPPFLAGS+=-DLIBSAIS_OPENMP
 	CFLAGS+=-fopenmp
 	LIBS+=-fopenmp
 endif

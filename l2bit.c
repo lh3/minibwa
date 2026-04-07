@@ -8,7 +8,7 @@ KSEQ_INIT(gzFile, gzread);
 
 int64_t l2b_intv2cid(const l2b_t *l2b, uint64_t st, uint64_t en, int64_t *cst, int *rev)
 {
-	int64_t s, lo = 0, hi = l2b->n_ctg, mid;
+	int64_t s, lo = 0, hi = l2b->n_ctg, mid = (lo + hi) / 2;
 	const l2b_ctg_t *ctg = 0;
 	assert(st < en);
 	if (en > l2b->tot_len * 2) return -3;
