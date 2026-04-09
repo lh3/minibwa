@@ -1,3 +1,14 @@
+## Getting Started
+```sh
+git clone https://github.com/lh3/minibwa
+cd minibwa
+make                           # Or "make omp=0" if the compiler doesn't support OpenMP
+./minibwa index test/chrM-human.fa.gz chrM-human              # index the genome
+./minibwa map -a chrM-human test/chrM-read_?.fa.gz > aln.sam  # align and output in SAM
+```
+
+## Introduction
+
 Minibwa aligns short and long reads against a reference genome. It is the
 successor of bwa-mem for short-read alignment with a different algorithm.
 Minibwa is 3-4 times as fast as the original bwa-mem and twice as fast as

@@ -9,6 +9,7 @@ minibwa index
 .RB [ -t
 .IR nThreads ]
 .I ref.fa
+.I idxPrefix
 .RE
 
 * Indexing a genome in low memory with the BWT-SW algorithm:
@@ -16,6 +17,7 @@ minibwa index
 minibwa index
 .B -l
 .I ref.fa
+.I idxPrefix
 .RE
 
 * Aligning short paired-end reads to an indexed genome and outputting SAM:
@@ -24,7 +26,7 @@ minibwa map
 .B -a
 .RB [ -t
 .IR nThreads ]
-.I ref.fa
+.I idxPrefix
 .I read1.fq.gz
 .I read2.fq.gz
 >
@@ -37,7 +39,7 @@ minibwa map
 .B -x lr
 .RB [ -t
 .IR nThreads ]
-.I ref.fa
+.I idxPrefix
 .I read.fq.gz
 >
 .I output.sam
@@ -62,17 +64,16 @@ anyway.
 .SH THE INDEX COMMAND
 .SS Summary
 .B minibwa index
-.RB [ -p
-.IR prefix ]
 .RB [ -l ]
 .RB [ -n
 .IR nThreads ]
 .I ref.fa
+.I idxPrefix
 
 Index a genome in the FASTA format. Generate
-.IR prefix .l2b
+.IR idxPrefix .l2b
 for the genome sequence and
-.IR prefix .mbw
+.IR idxPrefix .mbw
 for the FM-index. Minibwa uses the libsais algorithm for BWT construction by
 default. This algorithm is fast but requires
 .RI 18 N
@@ -84,10 +85,6 @@ to enable the BWT-SW algorithm which is slower but uses much less memory.
 
 .SS Options
 .TP 10
-.BI -p \ STR
-Prefix of the output index [same as
-.IR ref.fa ]
-.TP
 .B -l
 Use the old low-memory algorithm for BWT construction. Minibwa uses the libsais
 algorithm by default which uses over 50 GB for a human genome.
@@ -104,7 +101,7 @@ with OpenMP to enable this option.
 .IR preset ]
 .RB [ -t
 .IR nThreads ]
-.I ref.fa
+.I idxPrefix
 .I read.fq.gz
 .RI [ read2.fq.gz ]
 

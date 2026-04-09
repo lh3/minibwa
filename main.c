@@ -20,23 +20,29 @@ int main_gensa(int argc, char *argv[]);
 int main_fastmap(int argc, char *argv[]);
 int main_bench(int argc, char *argv[]);
 
-static int usage(FILE *fp)
+static int usage(FILE *fp, int is_long)
 {
 	fprintf(fp, "Usage: minibwt <command> <arguments>\n");
 	fprintf(fp, "Commands:\n");
-	fprintf(fp, "  General:\n");
-	fprintf(fp, "    index      index reference FASTA\n");
-	fprintf(fp, "    map        alignment\n");
-	fprintf(fp, "    version    print the version number\n");
-	fprintf(fp, "  Separate indexing routines:\n");
-	fprintf(fp, "    fa2bit     convert FASTA to the long-2bit format\n");
-	fprintf(fp, "    genraw     generate BWT from pac with the BWT-SW algorithm\n");
-	fprintf(fp, "    raw2bwt    recode bwtgen raw BWT\n");
-	fprintf(fp, "    gensa      generate sampled SA from BWT\n");
-	fprintf(fp, "    genbwt     generate BWT+SSA from long-2bit with libsais\n");
-	fprintf(fp, "  Debugging:\n");
-	fprintf(fp, "    bench      performance evaluation\n");
-	fprintf(fp, "    fastmap    test seeding strategies\n");
+	if (is_long) {
+		fprintf(fp, "  General:\n");
+		fprintf(fp, "    index      index reference FASTA\n");
+		fprintf(fp, "    map        read alignment\n");
+		fprintf(fp, "    version    print the version number\n");
+		fprintf(fp, "  Separate indexing routines:\n");
+		fprintf(fp, "    fa2bit     convert FASTA to the long-2bit format\n");
+		fprintf(fp, "    genraw     generate BWT from pac with the BWT-SW algorithm\n");
+		fprintf(fp, "    raw2bwt    recode bwtgen raw BWT\n");
+		fprintf(fp, "    gensa      generate sampled SA from BWT\n");
+		fprintf(fp, "    genbwt     generate BWT+SSA from long-2bit with libsais\n");
+		fprintf(fp, "  Debugging:\n");
+		fprintf(fp, "    bench      performance evaluation\n");
+		fprintf(fp, "    fastmap    test seeding strategies\n");
+	} else {
+		fprintf(fp, "  index      index reference FASTA\n");
+		fprintf(fp, "  map        read alignment\n");
+		fprintf(fp, "  version    print the version number\n");
+	}
 	return fp == stdout? 0 : 1;
 }
 
@@ -44,7 +50,7 @@ int main(int argc, char *argv[])
 {
 	int ret = 0;
 	kom_realtime();
-	if (argc == 1) return usage(stdout);
+	if (argc == 1) return usage(stdout, 0);
 	else if (strcmp(argv[1], "index") == 0) ret = main_index(argc-1, argv+1);
 	else if (strcmp(argv[1], "map") == 0) ret = main_map(argc-1, argv+1);
 	else if (strcmp(argv[1], "fa2bit") == 0) ret = main_fa2bit(argc-1, argv+1);
@@ -54,6 +60,7 @@ int main(int argc, char *argv[])
 	else if (strcmp(argv[1], "gensa") == 0) ret = main_gensa(argc-1, argv+1);
 	else if (strcmp(argv[1], "bench") == 0) ret = main_bench(argc-1, argv+1);
 	else if (strcmp(argv[1], "fastmap") == 0) ret = main_fastmap(argc-1, argv+1);
+	else if (strcmp(argv[1], "--help") == 0) return usage(stdout, 1);
 	else if (strcmp(argv[1], "version") == 0) {
 		printf("%s\n", MB_VERSION);
 		return 0;
