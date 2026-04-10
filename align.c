@@ -630,14 +630,6 @@ static void mb_align1(void *km, const mb_opt_t *opt, const mb_idx_t *mi, int qle
 			te0 = te0 > te1? te0 : te1;
 		} else te0 = te, qe0 = qe;
 	}
-	if (a[r->as].flag & MB_SEED_SELF) {
-		int max_ext = r->qs > r->ts? r->qs - r->ts : r->ts - r->qs;
-		if (r->ts - ts0 > max_ext) ts0 = r->ts - max_ext;
-		if (r->qs - qs0 > max_ext) qs0 = r->qs - max_ext;
-		max_ext = r->qe > r->te? r->qe - r->te : r->te - r->qe;
-		if (te0 - r->te > max_ext) te0 = r->te + max_ext;
-		if (qe0 - r->qe > max_ext) qe0 = r->qe + max_ext;
-	}
 
 	assert(te0 > ts0);
 	tseq = Kmalloc(km, uint8_t, te0 - ts0);

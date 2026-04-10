@@ -16,7 +16,6 @@
 
 #define MB_SEED_LONG_JOIN  0x1
 #define MB_SEED_IGNORE     0x2
-#define MB_SEED_SELF       0x4 // only when a sequence is aligned against itself
 
 struct mb_idx_s {
 	l2b_t *l2b;
