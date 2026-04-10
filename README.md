@@ -2,7 +2,7 @@
 ```sh
 git clone https://github.com/lh3/minibwa
 cd minibwa
-make                           # Or "make omp=0" if the compiler doesn't support OpenMP
+make        # Or "make omp=0" if the compiler doesn't support OpenMP
 ./minibwa index test/chrM-human.fa.gz chrM-human              # index the genome
 ./minibwa map -a chrM-human test/chrM-read_?.fa.gz > aln.sam  # align and output in SAM
 ```

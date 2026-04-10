@@ -407,7 +407,7 @@ static int *collect_long_gaps(void *km, int as1, int cnt1, mb_anchor_t *a, int m
 }
 
 static void mm_filter_bad_seeds(void *km, int as1, int cnt1, mb_anchor_t *a, int min_gap, int diff_thres, int max_ext_len, int max_ext_cnt)
-{
+{ // this function deals with e.g. 1000I20M1000D
 	int max_st, max_en, n, i, k, max, *K;
 	K = collect_long_gaps(km, as1, cnt1, a, min_gap, &n);
 	if (K == 0) return;
@@ -430,7 +430,7 @@ static void mm_filter_bad_seeds(void *km, int as1, int cnt1, mb_anchor_t *a, int
 		ts = a[as1 + i - 1].tpos;
 		for (l = k + 1; l < n && l <= k + max_ext_cnt; ++l) {
 			int j = K[l], diff;
-			if (a[as1 + j].qpos - qs > max_ext_len || a[as1 + j].tpos - ts > max_ext_len) break;
+			if (a[as1 + j].qpos - a[as1 + j].len - qs > max_ext_len || a[as1 + j].tpos - a[as1 + j].len - ts > max_ext_len) break;
 			gap = (a[as1 + j].qpos - a[as1 + j - 1].qpos) - (a[as1 + j].tpos - a[as1 + j - 1].tpos);
 			if (gap > 0) n_ins += gap;
 			else n_del += -gap;
@@ -445,7 +445,7 @@ static void mm_filter_bad_seeds(void *km, int as1, int cnt1, mb_anchor_t *a, int
 }
 
 static void mm_filter_bad_seeds_alt(void *km, int as1, int cnt1, mb_anchor_t *a, int min_gap, int max_ext)
-{
+{ // this function deals with e.g. 1000I20M2000I
 	int n, k, *K;
 	K = collect_long_gaps(km, as1, cnt1, a, min_gap, &n);
 	if (K == 0) return;
@@ -454,20 +454,20 @@ static void mm_filter_bad_seeds_alt(void *km, int as1, int cnt1, mb_anchor_t *a,
 		int gap1 = (a[as1 + i].qpos - a[as1 + i - 1].qpos) - (a[as1 + i].tpos - a[as1 + i - 1].tpos);
 		int64_t te1 = a[as1 + i].tpos;
 		int32_t qe1 = a[as1 + i].qpos;
+		int32_t left_len = a[as1 + i].len;
 		gap1 = gap1 > 0? gap1 : -gap1;
 		for (l = k + 1; l < n; ++l) {
-			int j = K[l], gap2, q_span_pre, qs2, m;
-			int64_t ts2;
+			int j = K[l], gap2, m;
 			if (a[as1 + j].qpos - qe1 > max_ext || a[as1 + j].tpos - te1 > max_ext) break;
 			gap2 = (a[as1 + j].qpos - a[as1 + j - 1].qpos) - (a[as1 + j].tpos - a[as1 + j - 1].tpos);
-			q_span_pre = a[as1 + j - 1].len; // TODO: seed len
-			ts2 = a[as1 + j - 1].tpos + q_span_pre;
-			qs2 = a[as1 + j - 1].qpos + q_span_pre;
-			m = ts2 - te1 < qs2 - qe1? ts2 - te1 : qs2 - qe1;
+			int64_t m_t = a[as1 + j - 1].tpos - te1 + left_len;
+			int32_t m_q = a[as1 + j - 1].qpos - qe1 + left_len;
+			m = m_t < m_q? m_t : m_q;
 			gap2 = gap2 > 0? gap2 : -gap2;
 			if (m > gap1 + gap2) break;
 			te1 = a[as1 + j].tpos;
 			qe1 = a[as1 + j].qpos;
+			left_len = a[as1 + j].len;
 			gap1 = gap2;
 		}
 		if (l > k + 1) {
@@ -486,10 +486,10 @@ static void mm_fix_bad_ends(const mb_hit_t *r, const mb_anchor_t *a, int bw, int
 	int32_t i, l, m;
 	*as = r->as, *cnt = r->cnt;
 	if (r->cnt < 3) return;
-	m = l = a[r->as].len; // TODO: seed len
+	m = l = a[r->as].len;
 	for (i = r->as + 1; i < r->as + r->cnt - 1; ++i) {
 		int32_t lq, lr, min, max;
-		int32_t q_span = a[i].len; // TODO: seed len
+		int32_t q_span = a[i].len;
 		if (a[i].flag & MB_SEED_LONG_JOIN) break;
 		lr = a[i].tpos - a[i-1].tpos;
 		lq = a[i].qpos - a[i-1].qpos;
@@ -501,13 +501,13 @@ static void mm_fix_bad_ends(const mb_hit_t *r, const mb_anchor_t *a, int bw, int
 		if (l >= bw << 1 || (m >= min_match && m >= bw) || m >= r->mlen >> 1) break;
 	}
 	*cnt = r->as + r->cnt - *as;
-	m = l = a[r->as + r->cnt - 1].len; // TODO: seed len
+	m = l = a[r->as + r->cnt - 1].len;
 	for (i = r->as + r->cnt - 2; i > *as; --i) {
 		int32_t lq, lr, min, max;
-		int32_t q_span = a[i+1].len; // TODO: seed len
+		int32_t q_span = a[i].len;
 		if (a[i+1].flag & MB_SEED_LONG_JOIN) break;
-		lr = a[i+1].tpos - a[i].tpos;
-		lq = a[i+1].qpos - a[i].qpos;
+		lr = a[i+1].tpos - a[i].tpos - a[i+1].len + a[i].len;
+		lq = a[i+1].qpos - a[i].qpos - a[i+1].len + a[i].len;
 		min = lr < lq? lr : lq;
 		max = lr > lq? lr : lq;
 		if (max - min > l >> 1) *cnt = i + 1 - *as;
@@ -518,7 +518,7 @@ static void mm_fix_bad_ends(const mb_hit_t *r, const mb_anchor_t *a, int bw, int
 }
 
 static void mb_max_stretch(const mb_hit_t *r, const mb_anchor_t *a, int32_t *as, int32_t *cnt)
-{
+{ // find the max ungapped chain
 	int32_t i, score, max_score, len, max_i, max_len;
 
 	*as = r->as, *cnt = r->cnt;
@@ -527,17 +527,15 @@ static void mb_max_stretch(const mb_hit_t *r, const mb_anchor_t *a, int32_t *as,
 	max_score = -1, max_i = -1, max_len = 0;
 	score = a[r->as].len, len = 1;
 	for (i = r->as + 1; i < r->as + r->cnt; ++i) {
-		int32_t lq, lr, q_span;
-		q_span = a[i].len; // TODO: seed len
-		lr = a[i].tpos - a[i-1].tpos;
-		lq = a[i].qpos - a[i-1].qpos;
-		if (lq == lr) {
-			score += lq < q_span? lq : q_span;
+		int32_t lr = a[i].tpos - a[i-1].tpos;
+		int32_t lq = a[i].qpos - a[i-1].qpos;
+		if (lq == lr) { // ungapped
+			score += lq < a[i].len? lq : a[i].len; // in theory, "lq > a[i].len" should always stand
 			++len;
-		} else {
+		} else { // a gap
 			if (score > max_score)
 				max_score = score, max_len = len, max_i = i - len;
-			score = q_span, len = 1;
+			score = a[i].len, len = 1;
 		}
 	}
 	if (score > max_score)
