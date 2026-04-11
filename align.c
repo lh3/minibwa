@@ -689,8 +689,8 @@ static void mb_align1(void *km, const mb_opt_t *opt, const mb_idx_t *mi, int qle
 				mb_align_pair(km, opt, qe - qs, qseq, te - ts, tseq, mat, bw1, -1, zdrop_code == 2? opt->zdrop_inv : opt->zdrop, ksw_flag, ez); // second pass: lift approximate
 			if (kom_dbg_flag & MB_DBG_AN_POS) fprintf(stderr, "AD\t%d\t%ld\t%ld\t%d\t%d\t%d\t%d\n", r->as, (long)ts, (long)te, qs, qe, zdrop_code, ez->zdropped);
 			// update CIGAR
-			assert(ez->n_cigar > 0);
-			mb_append_cigar(r, ez->n_cigar, ez->cigar);
+			if (ez->n_cigar > 0)
+				mb_append_cigar(r, ez->n_cigar, ez->cigar);
 			if (ez->zdropped) { // truncated by Z-drop; TODO: sometimes Z-drop kicks in because the next seed placement is wrong. This can be fixed in principle.
 				int32_t mlen, blen;
 				if (!r->p) {
