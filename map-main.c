@@ -277,6 +277,7 @@ static ko_longopt_t long_options[] = {
 	{ "ds",           ko_no_argument,       305 },
 	{ "cs",           ko_no_argument,       306 },
 	{ "MD",           ko_no_argument,       307 },
+	{ "adap",         ko_required_argument, 308 },
 	{ "dbg-aln-seq",  ko_no_argument,       601 },
 	{ "dbg-anchor",   ko_no_argument,       602 },
 	{ "dbg-seed",     ko_no_argument,       603 },
@@ -292,7 +293,7 @@ static int usage(FILE *fp, const mb_opt_t *opt)
 	fprintf(fp, "Usage: minibwa map [options] <in.idx> <in.fastq>\n");
 	fprintf(fp, "Options:\n");
 	fprintf(fp, "  Mapping:\n");
-	fprintf(fp, "    -x STR           preset (sr or lr) [sr]\n");
+	fprintf(fp, "    -x STR           preset (sr:adap, sr or lr) [sr:adap]\n");
 	fprintf(fp, "    -k INT           min k-mer length [%d]\n", opt->min_len);
 	fprintf(fp, "    -c NUM           max seed occurrences [%d]\n", opt->max_occ);
     fprintf(fp, "    -m INT           min chaining score [%d]\n", opt->min_chain_score);
@@ -314,7 +315,7 @@ static int usage(FILE *fp, const mb_opt_t *opt)
 	fprintf(fp, "    --version        print version number\n");
 	return fp == stdout? 0 : 1;
 }
-#if 0
+
 static inline void yes_or_no(mb_opt_t *opt, uint64_t flag, int long_idx, const char *arg, int yes_to_set)
 {
 	if (yes_to_set) {
@@ -327,7 +328,7 @@ static inline void yes_or_no(mb_opt_t *opt, uint64_t flag, int long_idx, const c
 		else fprintf(stderr, "[WARNING]\033[1;31m option '--%s' only accepts 'yes' or 'no'.\033[0m\n", long_options[long_idx].name);
 	}
 }
-#endif
+
 int main_map(int argc, char *argv[])
 {
 	const char *opt_str = "x:o:k:c:m:p:A:B:b:O:E:t:K:N:CPyYR:aU";
@@ -385,6 +386,8 @@ int main_map(int argc, char *argv[])
 			mo.flag |= MB_F_WRITE_CS;
 		} else if (c == 307) { // --MD
 			mo.flag |= MB_F_WRITE_MD;
+		} else if (c == 308) { // --adap
+			yes_or_no(&mo, MB_F_ADAP, o.longidx, o.arg, 1);
 		} else if (c == 601) { // --dbg-aln-seq
 			kom_dbg_flag |= MB_DBG_ALN_SEQ;
 		} else if (c == 602) { // --dbg-anchor
