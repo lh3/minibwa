@@ -278,6 +278,7 @@ static ko_longopt_t long_options[] = {
 	{ "cs",           ko_no_argument,       306 },
 	{ "MD",           ko_no_argument,       307 },
 	{ "adap",         ko_required_argument, 308 },
+	{ "chain-only",   ko_no_argument,       309 },
 	{ "dbg-aln-seq",  ko_no_argument,       601 },
 	{ "dbg-anchor",   ko_no_argument,       602 },
 	{ "dbg-seed",     ko_no_argument,       603 },
@@ -293,25 +294,32 @@ static int usage(FILE *fp, const mb_opt_t *opt)
 	fprintf(fp, "Usage: minibwa map [options] <in.idx> <in.fastq>\n");
 	fprintf(fp, "Options:\n");
 	fprintf(fp, "  Mapping:\n");
-	fprintf(fp, "    -x STR           preset (sr:adap, sr or lr) [sr:adap]\n");
-	fprintf(fp, "    -k INT           min k-mer length [%d]\n", opt->min_len);
+	fprintf(fp, "    -x STR           preset (sr for short/long reads; lr for long reads) [sr]\n");
+	fprintf(fp, "    -l NUM           treat reads <NUM as short reads in the sr mode [%d]\n", opt->max_sr_len);
+	fprintf(fp, "    -k INT           min seed length [%d]\n", opt->min_len);
 	fprintf(fp, "    -c NUM           max seed occurrences [%d]\n", opt->max_occ);
     fprintf(fp, "    -m INT           min chaining score [%d]\n", opt->min_chain_score);
 	fprintf(fp, "    -p FLOAT         min secondary-to-primary score ratio [%g]\n", opt->pri_ratio);
 	fprintf(fp, "    -N INT           retain at most INT secondary alignments [%d]\n", opt->best_n);
-	fprintf(fp, "    -C               perform chaining only without base alignment\n");
+	fprintf(fp, "    --chain-only     perform chaining only without base alignment\n");
 	fprintf(fp, "  Alignment:\n");
 	fprintf(fp, "    -A INT           matching score [%d]\n", opt->a);
 	fprintf(fp, "    -B INT           mismatching openalty [%d]\n", opt->b);
+	fprintf(fp, "    -O INT[,INT]     gap open penalty [%d,%d]\n", opt->q, opt->q2);
+	fprintf(fp, "    -E INT[,INT]     gap extension penalty [%d,%d]\n", opt->e, opt->e2);
 	fprintf(fp, "  Paired-end:\n");
 	fprintf(fp, "    -P               skip pairing and mate resuce\n");
-	fprintf(fp, "    --rescue=INT     mate rescue for up to INT candidates [%d]\n", opt->max_rescue);
+	fprintf(fp, "    --rescue=INT     mate rescue for up to INT candidates; 0 to skip rescue [%d]\n", opt->max_rescue);
 	fprintf(fp, "  Input/Output:\n");
+	fprintf(fp, "    -a               output SAM (PAF by default)\n");
 	fprintf(fp, "    -t INT           number of worker threads [%d]\n", opt->n_thread);
+	fprintf(fp, "    -o FILE          output file name [stdout]\n");
+	fprintf(fp, "    -R STR           SAM read group line in a format like '@RG\\tID:foo\\tSM:bar' []\n");
+	fprintf(fp, "    -U               don't output unmapped reads\n");
+	fprintf(fp, "    --outn=INT       output up to INT secondary alignments [0]\n");
 	fprintf(fp, "    -y               copy FASTA/Q comments to output\n");
 	fprintf(fp, "    -Y               use soft clipping for supplementary alignments\n");
 	fprintf(fp, "    -K NUM           process NUM-bp query sequences in a batch [500m]\n");
-	fprintf(fp, "    --outn=INT       output up to INT secondary alignments [0]\n");
 	fprintf(fp, "    --version        print version number\n");
 	return fp == stdout? 0 : 1;
 }
@@ -331,11 +339,11 @@ static inline void yes_or_no(mb_opt_t *opt, uint64_t flag, int long_idx, const c
 
 int main_map(int argc, char *argv[])
 {
-	const char *opt_str = "x:o:k:c:m:p:A:B:b:O:E:t:K:N:CPyYR:aU";
+	const char *opt_str = "x:o:k:c:m:p:A:B:b:O:E:t:K:N:PyYR:aUl:";
 	int32_t c;
 	mb_idx_t *idx;
 	mb_opt_t mo;
-	char *fn_out = 0, *rg_line = 0;
+	char *fn_out = 0, *rg_line = 0, *s;
 	ketopt_t o = KETOPT_INIT;
 
 	mb_opt_init(&mo);
@@ -362,9 +370,9 @@ int main_map(int argc, char *argv[])
 		else if (c == 'N') mo.best_n = atoi(o.arg);
 		else if (c == 'A') mo.a = atoi(o.arg);
 		else if (c == 'B') mo.b = atoi(o.arg);
+		else if (c == 'l') mo.max_sr_len = kom_parse_num(o.arg, 0);
 		else if (c == 'a') mo.flag |= MB_F_SAM;
 		else if (c == 'U') mo.flag |= MB_F_NO_UNMAP;
-		else if (c == 'C') mo.flag |= MB_F_NO_ALN;
 		else if (c == 'y') mo.flag |= MB_F_COPY_COMMENT;
 		else if (c == 'Y') mo.flag |= MB_F_SUPP_SOFT;
 		else if (c == 'P') mo.flag &= ~MB_F_PE;
@@ -388,6 +396,8 @@ int main_map(int argc, char *argv[])
 			mo.flag |= MB_F_WRITE_MD;
 		} else if (c == 308) { // --adap
 			yes_or_no(&mo, MB_F_ADAP, o.longidx, o.arg, 1);
+		} else if (c == 309) { // --chain-only
+			mo.flag |= MB_F_NO_ALN;
 		} else if (c == 601) { // --dbg-aln-seq
 			kom_dbg_flag |= MB_DBG_ALN_SEQ;
 		} else if (c == 602) { // --dbg-anchor
@@ -400,6 +410,12 @@ int main_map(int argc, char *argv[])
 			kom_dbg_flag |= MB_DBG_ALN_PE;
 		} else if (c == 606) { // --dbg-an-pos
 			kom_dbg_flag |= MB_DBG_AN_POS;
+		} else if (c == 'O') {
+			mo.q = mo.q2 = strtol(o.arg, &s, 10);
+			if (*s == ',') mo.q2 = strtol(s + 1, &s, 10);
+		} else if (c == 'E') {
+			mo.e = mo.e2 = strtol(o.arg, &s, 10);
+			if (*s == ',') mo.e2 = strtol(s + 1, &s, 10);
 		} else if (c == 901) { // --version
 			puts(MB_VERSION);
 			exit(0);

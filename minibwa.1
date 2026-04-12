@@ -116,12 +116,75 @@ and paired-ened reads as input.
 
 .SS Mapping options
 .TP 10
-.B -x \ STR
+.BI -x \ STR
 Preset:
 .B sr
-for short reads,
+for adaptive short/long reads but optmized for short reads, or
 .B lr
-for long reads or
-.B sr:adap
-for mixed short and long reads
-.RB [ sr:adap ]
+for long reads
+.RB [ sr ].
+In the
+.B sr
+mode, minibwa adjusts several parameters based on the read length. It further
+enables long-read heuristics (mapQ formula and anchor filtering) if the read is
+longer than option
+.BR -l .
+.TP
+.BI -l \ NUM
+In the adaptive
+.B sr
+mode, treat reads shorter than
+.I NUM
+as short reads [325]
+.TP
+.BR --adap = yes | no
+Enable/disable adaptive mode. Enabled with the default
+.B sr
+mode and disabled with
+.BR lr .
+.TP
+.BI -k \ INT
+Minimum seed length [19]. Like bwa-mem, minibwa uses variable-length seeds.
+.TP
+.BI -c \ NUM
+Maximum seed occurrence [250]. Minibwa samples up to
+.I NUM
+occurrences if there are too many.
+.TP
+.BI -m \ INT
+Minimum chaining score [25]
+.TP
+.BI -p \ FLOAT
+Minimum secondary-to-primary score ratio [0.5]
+.TP
+.BI -N \ INT
+Retain at most
+.I INT
+secondary alignments [101]
+.TP
+.B --chain-only
+Perform chaining only without base alignment
+
+.SS Alignment options
+.TP 10
+.BI -A \ INT
+Match score [2]
+.TP
+.BI -B \ INT
+Mismatch penalty [8]
+.TP
+.BI -O \ INT1 ,[ INT2 ]
+Dual gap open penalty [12,23]. If
+.I INT2
+is not specified, it is set to
+.IR INT1 .
+.TP
+.BI -E \ INT1 ,[ INT2 ]
+Dual gap extension penalty [2,1]. If
+.I INT2
+is not specified, it is set to
+.IR INT1 .
+A gap of length
+.I k
+costs
+.RI min{ O1 + k * E1 , O2 + k * E2 }.

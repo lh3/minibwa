@@ -40,25 +40,19 @@ static void mb_opt_reset(mb_opt_t *opt)
 void mb_opt_init(mb_opt_t *opt)
 {
 	mb_opt_reset(opt);
-	mb_opt_preset(opt, "sr:adap");
+	mb_opt_preset(opt, "sr");
 }
 
 int mb_opt_preset(mb_opt_t *opt, const char *preset)
 {
 	mb_opt_reset(opt);
-	if (strcmp(preset, "sr") == 0 || strcmp(preset, "sr:adap") == 0) {
-		opt->flag |= MB_F_PE;
+	if (strcmp(preset, "sr") == 0 || strcmp(preset, "adap") == 0) {
+		opt->flag |= MB_F_PE | MB_F_ADAP;
 		opt->min_len = 19;
 		opt->min_dp_max = 30;
-		if (strcmp(preset, "sr:adap") == 0) {
-			opt->flag |= MB_F_ADAP;
-			opt->bw = opt->bw_long = 100;
-			opt->max_gap = 100;
-		} else {
-			opt->flag &= ~MB_F_ADAP;
-			opt->bw = opt->bw_long = 150;
-			opt->max_gap = 150;
-		}
+		opt->flag |= MB_F_ADAP;
+		opt->bw = opt->bw_long = 100;
+		opt->max_gap = 100;
 		opt->pri_ratio = 0.5f;
 		opt->best_n = 101;
 		opt->end_bonus = 10;
