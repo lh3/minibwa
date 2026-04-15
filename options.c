@@ -103,6 +103,6 @@ void mb_opt_adap(const mb_opt_t *opt0, int32_t len, mb_opt_t *opt)
 		opt->min_dp_max = (int32_t)(50 - (50 - opt0->min_dp_max) * b + .499);
 	if (opt0->min_chain_score < 40)
 		opt->min_chain_score = (int32_t)(40 - (40 - opt0->min_chain_score) * b + .499);
-	if (opt0->pri_ratio < 0.75)
-		opt->pri_ratio = 0.75 - (0.75 - opt0->pri_ratio) * b;
+	if (opt0->pri_ratio < 0.7)
+		opt->pri_ratio = 0.7 - (0.7 - opt0->pri_ratio) * b;
 }
