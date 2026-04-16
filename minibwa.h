@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define MB_VERSION "0.0-r247-dirty"
+#define MB_VERSION "0.0-r248-dirty"
 
 #define MB_F_SAM              (0x1LL)       // output in the SAM format
 #define MB_F_NO_UNMAP         (0x2LL)       // output unmapped query sequences
@@ -84,11 +84,12 @@ struct mb_idx_s;
 typedef struct mb_idx_s mb_idx_t;
 
 typedef struct {
-	uint32_t cap;                      // the capacity of cigar[]
-	int32_t dp_score, dp_max, dp_max2; // DP score; score of the max-scoring segment; score of the best alternate mappings
-	uint32_t n_ambi:31, cs:1;          // number of ambiguous bases;
-	int32_t n_cigar;                   // number of cigar operations in cigar[]
-	uint32_t cigar[];                  // cs/MD is appended at the end
+	uint32_t cap;               // the capacity of cigar[]
+	int32_t dp_score, dp_max0;  // DP score; score of the max-scoring segment
+	int32_t dp_max, dp_max2;    // adjusted score and second best score for mapQ
+	uint32_t n_ambi:31, cs:1;   // number of ambiguous bases;
+	int32_t n_cigar;            // number of cigar operations in cigar[]
+	uint32_t cigar[];           // cs/MD is appended at the end
 } mb_extra_t;
 
 #define MB_PARENT_UNSET   (-1)

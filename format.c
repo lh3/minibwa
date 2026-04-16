@@ -13,7 +13,7 @@ static char mb_rg_id[256];
 static inline void write_tags(kstring_t *s, const mb_hit_t *p)
 {
 	int32_t nm = p->blen - p->mlen + p->p->n_ambi;
-	kom_sprintf_lite(s, "\tNM:i:%d\tAS:i:%d\tms:i:%d\tm2:i:%d", nm, p->p->dp_score, p->p->dp_max, p->p->dp_max2);
+	kom_sprintf_lite(s, "\tNM:i:%d\tAS:i:%d\tms:i:%d\tmd:i:%d", nm, p->p->dp_score, p->p->dp_max0, p->p->dp_max - p->p->dp_max2);
 }
 
 void mb_fmt_paf(kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, const mb_hit_t *p, uint64_t opt_flag, int n_seg, int seg_idx)

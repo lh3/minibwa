@@ -259,7 +259,7 @@ void mb_update_extra(void *km, mb_hit_t *r, const uint8_t *qseq, const uint8_t *
 			toff += len;
 		}
 	}
-	p->dp_max = (int32_t)(max + .499);
+	p->dp_max0 = p->dp_max = (int32_t)(max + .499);
 	assert(qoff == r->qe - r->qs && toff == r->te - r->ts);
 	if (opt_flag & MB_F_EQX) mm_update_cigar_eqx(r, qseq, tseq); // NB: it has to be called here as changes to qseq and tseq are not returned
 	if (opt_flag & (MB_F_WRITE_DS|MB_F_WRITE_CS|MB_F_WRITE_MD)) {
@@ -858,20 +858,20 @@ static int32_t mb_recal_max_dp(const mb_hit_t *r, double b2, int32_t match_sc)
 	return (int32_t)(match_sc * (r->mlen - b2 * n_mis - gap_cost) + .499);
 }
 
-void mb_update_dp_max(int qlen, int n_regs, mb_hit_t *regs, float frac, int a, int b)
+void mb_update_dp_max(int qlen, int n_regs, mb_hit_t *regs, double frac, int a, int b)
 {
-	int32_t max = -1, max2 = -1, i, max_i = -1;
+	int32_t max = -1, max2 = -1, i, max_i = -1, max2_i = -1;
 	double div, b2;
 	if (n_regs < 2) return;
 	for (i = 0; i < n_regs; ++i) {
 		mb_hit_t *r = &regs[i];
 		if (r->p == 0) continue;
-		if (r->p->dp_max > max) max2 = max, max = r->p->dp_max, max_i = i;
-		else if (r->p->dp_max > max2) max2 = r->p->dp_max;
+		if (r->p->dp_max > max) max2 = max, max2_i = max_i, max = r->p->dp_max, max_i = i;
+		else if (r->p->dp_max > max2) max2 = r->p->dp_max, max2_i = i;
 	}
-	if (max_i < 0 || max < 0 || max2 < 0) return;
-	if (regs[max_i].qe - regs[max_i].qs < (double)qlen * frac) return;
-	if (max2 < (double)max * frac) return;
+	if (max_i < 0 || max2_i < 0) return;
+	if (regs[max_i].qe - regs[max_i].qs < qlen * frac) return;
+	if (regs[max2_i].qe - regs[max2_i].qs < (regs[max_i].qe - regs[max_i].qs) * sqrt(frac)) return;
 	div = 1. - mb_event_identity(&regs[max_i]);
 	if (div < 0.02) div = 0.02;
 	b2 = 0.5 / div; // max value: 25

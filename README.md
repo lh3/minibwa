@@ -9,11 +9,10 @@ make        # Or "make omp=0" if the compiler doesn't support OpenMP
 
 ## Introduction
 
-Minibwa aligns short and long reads against a reference genome. It is the
-successor of bwa-mem for short-read alignment with a different algorithm.
-Minibwa is 3-4 times as fast as the original bwa-mem and twice as fast as
-bwa-mem2 at comparable accuracy. While minibwa works with accurate long reads,
-it does not aim to replace minimap2. 
+Minibwa aligns short reads against a reference genome. It is the successor of
+bwa-mem with a different algorithm. Minibwa is 3-4 times as fast as the
+original bwa-mem and twice as fast as bwa-mem2 at comparable accuracy. While
+minibwa works with accurate long reads, minimap2 is more robust.
 
 Minibwa is named after bwa-mem and minimap2 and is based on the source code of
 both projects: it indexes the genome with Burrow-Wheeler Transform (BWT), finds

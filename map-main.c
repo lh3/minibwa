@@ -275,6 +275,7 @@ static ko_longopt_t long_options[] = {
 	{ "outn",         ko_required_argument, 302 },
 	{ "pe-predef",    ko_optional_argument, 303 },
 	{ "rescue",       ko_required_argument, 304 },
+	{ "eqx",          ko_no_argument,       305 },
 	{ "adap",         ko_required_argument, 308 },
 	{ "chain-only",   ko_no_argument,       309 },
 	{ "dbg-aln-seq",  ko_no_argument,       601 },
@@ -394,6 +395,8 @@ int main_map(int argc, char *argv[])
 			mo.flag |= MB_F_PE_PREDEF;
 		} else if (c == 304) { // --rescue
 			mo.max_rescue = atoi(o.arg);
+		} else if (c == 305) { // --eqx
+			mo.flag |= MB_F_EQX;
 		} else if (c == 308) { // --adap
 			yes_or_no(&mo, MB_F_ADAP, o.longidx, o.arg, 1);
 		} else if (c == 309) { // --chain-only
