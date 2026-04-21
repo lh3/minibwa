@@ -11,13 +11,14 @@ MALLOC_O=	mimalloc.o
 PROG=		minibwa
 LIBS=		-lpthread -lz -lm
 ARCH=		$(shell uname -m)
+omp=		$(shell printf '\043include <omp.h>\nint main(){return 0;}' | $(CC) -x c -fopenmp - 2>/dev/null && echo "1" || echo "0")
 
 ifneq ($(asan),)
 	CFLAGS+=-fsanitize=address
 	LIBS+=-fsanitize=address -ldl
 endif
 
-ifneq ($(omp),0)
+ifeq ($(omp),1)
 	CPPFLAGS+=-DLIBSAIS_OPENMP
 	CFLAGS+=-fopenmp
 	LIBS+=-fopenmp
