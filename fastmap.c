@@ -70,6 +70,18 @@ static void process_batch(const mb_idx_t *idx, int32_t n, batch_seq1_t *t, int32
 	}
 }
 
+static int usage_fastmap(FILE *fp, int min_len, int min_occ, int max_size_out, int max_seq)
+{
+	fprintf(fp, "Usage: minibwa fastmap [options] <idx-prefix> <in.fq>\n");
+	fprintf(fp, "Options:\n");
+	fprintf(fp, "  -l INT     min seed length [%d]\n", min_len);
+	fprintf(fp, "  -s INT     min interval size [%d]\n", min_occ);
+	fprintf(fp, "  -w INT     max interval size to output coordinates [%d]\n", max_size_out);
+	fprintf(fp, "  -b INT     batch size [%d]\n", max_seq);
+	fprintf(fp, "  --help     print this help message\n");
+	return fp == stdout? 0 : 1;
+}
+
 int main_fastmap(int argc, char *argv[])
 {
 	mb_idx_t *idx;
@@ -83,23 +95,20 @@ int main_fastmap(int argc, char *argv[])
 	kstring_t out = {0};
 	int32_t n_seq = 0;
 	batch_seq1_t *seq = 0;
+	static ko_longopt_t long_opts[] = {
+		{ "help", ko_no_argument, 901 },
+		{ 0, 0, 0 }
+	};
 
-	while ((c = ketopt(&o, argc, argv, 1, "l:s:w:b:", 0)) >= 0) {
+	while ((c = ketopt(&o, argc, argv, 1, "l:s:w:b:", long_opts)) >= 0) {
 		if (c == 'l') min_len = atoi(o.arg);
 		else if (c == 's') min_occ = atoi(o.arg);
 		else if (c == 'w') max_size_out = atoi(o.arg);
 		else if (c == 'b') max_seq = atoi(o.arg);
+		else if (c == 901) return usage_fastmap(stdout, min_len, min_occ, max_size_out, max_seq);
 	}
 
-	if (argc - o.ind < 2) {
-		fprintf(stderr, "Usage: minibwa fastmap [options] <idx-prefix> <in.fq>\n");
-		fprintf(stderr, "Options:\n");
-		fprintf(stderr, "  -l INT     min seed length [%d]\n", min_len);
-		fprintf(stderr, "  -s INT     min interval size [%d]\n", min_occ);
-		fprintf(stderr, "  -w INT     max interval size to output coordinates [%d]\n", max_size_out);
-		fprintf(stderr, "  -b INT     batch size [%d]\n", max_seq);
-		return 1;
-	}
+	if (argc - o.ind < 2) return usage_fastmap(stderr, min_len, min_occ, max_size_out, max_seq);
 
 	idx = mb_idx_load(argv[o.ind]);
 	bwt = idx->bwt;

@@ -290,6 +290,7 @@ static ko_longopt_t long_options[] = {
 	{ "dbg-aln-pe",   ko_no_argument,       605 },
 	{ "dbg-an-pos",   ko_no_argument,       606 }, // anchor position
 	{ "version",      ko_no_argument,       901 },
+	{ "help",         ko_no_argument,       902 },
 	{ 0, 0, 0 }
 };
 
@@ -332,6 +333,7 @@ static int usage(FILE *fp, const mb_opt_t *opt)
 	fprintf(fp, "    -Y               use soft clipping for supplementary alignments\n");
 	fprintf(fp, "    -K NUM1[,NUM2]   process NUM1-NUM2 bp of query sequences in a batch [100m,1g]\n");
 	fprintf(fp, "    --version        print version number\n");
+	fprintf(fp, "    --help           print this help message\n");
 	return fp == stdout? 0 : 1;
 }
 
@@ -449,6 +451,8 @@ int main_map(int argc, char *argv[])
 		} else if (c == 901) { // --version
 			puts(MB_VERSION);
 			exit(0);
+		} else if (c == 902) { // --help
+			return usage(stdout, &mo);
 		}
 	}
 	if (argc - o.ind < 2)

@@ -53,6 +53,17 @@ mb_bwt_t *mb_bwt_libsais(const l2b_t *l2b, int sa_bit, int both_strand, int n_th
 	return bwt;
 }
 
+static int usage_fa2bit(FILE *fp, uint64_t seed)
+{
+	fprintf(fp, "Usage: minibwa fa2bit [options] <in.fa> <out.l2b>\n");
+	fprintf(fp, "Options:\n");
+	fprintf(fp, "  -s INT    random seed [%lu]\n", (unsigned long)seed);
+	fprintf(fp, "  -p        output the BWA pac format\n");
+	fprintf(fp, "  -2        output both strands (effective with -p)\n");
+	fprintf(fp, "  --help    print this help message\n");
+	return fp == stdout? 0 : 1;
+}
+
 int main_fa2bit(int argc, char *argv[])
 {
 	l2b_t *l2b;
@@ -60,19 +71,17 @@ int main_fa2bit(int argc, char *argv[])
 	uint64_t seed = 11;
 	ketopt_t o = KETOPT_INIT;
 	int c;
-	while ((c = ketopt(&o, argc, argv, 1, "s:p2", 0)) >= 0) {
+	static ko_longopt_t long_opts[] = {
+		{ "help", ko_no_argument, 901 },
+		{ 0, 0, 0 }
+	};
+	while ((c = ketopt(&o, argc, argv, 1, "s:p2", long_opts)) >= 0) {
 		if (c == 's') seed = atol(o.arg);
 		else if (c == 'p') out_pac = 1;
 		else if (c == '2') both_strand = 1;
+		else if (c == 901) return usage_fa2bit(stdout, seed);
 	}
-	if (argc - o.ind < 2) {
-		fprintf(stderr, "Usage: minibwa fa2bit [options] <in.fa> <out.l2b>\n");
-		fprintf(stderr, "Options:\n");
-		fprintf(stderr, "  -s INT    random seed [%lu]\n", (unsigned long)seed);
-		fprintf(stderr, "  -p        output the BWA pac format\n");
-		fprintf(stderr, "  -2        output both strands (effective with -p)\n");
-		return 1;
-	}
+	if (argc - o.ind < 2) return usage_fa2bit(stderr, seed);
 	l2b = l2b_import(argv[o.ind], seed);
 	if (out_pac)
 		l2b_save_pac(argv[o.ind+1], l2b, both_strand);
@@ -82,39 +91,73 @@ int main_fa2bit(int argc, char *argv[])
 	return 0;
 }
 
+#ifdef USE_GPL
+static int usage_genraw(FILE *fp)
+{
+	fprintf(fp, "Usage: minibwa genraw [options] <in.pac> <out.raw-bwt>\n");
+	fprintf(fp, "Options:\n");
+	fprintf(fp, "  -b NUM      block size [10m]\n");
+	fprintf(fp, "  --help      print this help message\n");
+	return fp == stdout? 0 : 1;
+}
+#endif
+
 int main_genraw(int argc, char *argv[])
 {
 #ifdef USE_GPL
 	ketopt_t o = KETOPT_INIT;
 	int c, block_size = 10000000;
-	while ((c = ketopt(&o, argc, argv, 1, "b:", 0)) >= 0) {
+	static ko_longopt_t long_opts[] = {
+		{ "help", ko_no_argument, 901 },
+		{ 0, 0, 0 }
+	};
+	while ((c = ketopt(&o, argc, argv, 1, "b:", long_opts)) >= 0) {
 		if (c == 'b') block_size = kom_parse_num(o.arg, 0);
+		else if (c == 901) return usage_genraw(stdout);
 	}
-	if (argc - o.ind < 2) {
-		fprintf(stderr, "Usage: minibwa genraw [options] <in.pac> <out.raw-bwt>\n");
-		fprintf(stderr, "Options:\n");
-		fprintf(stderr, "  -b NUM      block size [10m]\n");
-		return 1;
-	}
+	if (argc - o.ind < 2) return usage_genraw(stderr);
 	mb_bwtgen(argv[o.ind], argv[o.ind+1], block_size);
 	return 0;
 #else
+	(void)argc; (void)argv;
 	if (kom_verbose >= 1) fprintf(stderr, "ERROR: genraw not compiled as it depends on GPL'd code\n");
 	return 1;
 #endif
 }
 
+static int usage_raw2bwt(FILE *fp)
+{
+	fprintf(fp, "Usage: minibwa raw2bwt <raw.bwt> <recode.bwt>\n");
+	fprintf(fp, "Options:\n");
+	fprintf(fp, "  --help    print this help message\n");
+	return fp == stdout? 0 : 1;
+}
+
 int main_raw2bwt(int argc, char *argv[])
 {
 	mb_bwt_t *bwt;
-	if (argc < 3) {
-		printf("Usage: minibwa raw2bwt <raw.bwt> <recode.bwt>\n");
-		return 1;
-	}
+	int i;
+	for (i = 1; i < argc; ++i)
+		if (strcmp(argv[i], "--help") == 0) return usage_raw2bwt(stdout);
+	if (argc < 3) return usage_raw2bwt(stderr);
 	bwt = mb_bwt_load_raw(argv[1]);
 	mb_bwt_save(argv[2], bwt);
 	mb_bwt_destroy(bwt);
 	return 0;
+}
+
+static int usage_genbwt(FILE *fp, int sa_bit, int n_thread)
+{
+	(void)n_thread;
+	fprintf(fp, "Usage: minibwa genbwt [options] <in.l2b> <out.bwt>\n");
+	fprintf(fp, "Options:\n");
+	fprintf(fp, "  -u INT      SA sample rate at 1/(1<<INT) [%d]\n", sa_bit);
+	fprintf(fp, "  -1          forward strand only\n");
+#ifdef LIBSAIS_OPENMP
+	fprintf(fp, "  -t INT      number of threads [%d]\n", n_thread);
+#endif
+	fprintf(fp, "  --help      print this help message\n");
+	return fp == stdout? 0 : 1;
 }
 
 int main_genbwt(int argc, char *argv[])
@@ -123,21 +166,17 @@ int main_genbwt(int argc, char *argv[])
 	int c, n_thread = 4, both_strand = 1, sa_bit = 4;
 	mb_bwt_t *bwt;
 	l2b_t *l2b;
-	while ((c = ketopt(&o, argc, argv, 1, "1u:t:", 0)) >= 0) {
+	static ko_longopt_t long_opts[] = {
+		{ "help", ko_no_argument, 901 },
+		{ 0, 0, 0 }
+	};
+	while ((c = ketopt(&o, argc, argv, 1, "1u:t:", long_opts)) >= 0) {
 		if (c == 't') n_thread = atoi(o.arg);
 		else if (c == '1') both_strand = 0;
 		else if (c == 'u') sa_bit = atoi(o.arg);
+		else if (c == 901) return usage_genbwt(stdout, sa_bit, n_thread);
 	}
-	if (argc - o.ind < 2) {
-		fprintf(stderr, "Usage: minibwa genbwt [options] <in.l2b> <out.bwt>\n");
-		fprintf(stderr, "Options:\n");
-		fprintf(stderr, "  -u INT      SA sample rate at 1/(1<<INT) [%d]\n", sa_bit);
-		fprintf(stderr, "  -1          forward strand only\n");
-#ifdef LIBSAIS_OPENMP
-		fprintf(stderr, "  -t INT      number of threads [%d]\n", n_thread);
-#endif
-		return 1;
-	}
+	if (argc - o.ind < 2) return usage_genbwt(stderr, sa_bit, n_thread);
 	l2b = l2b_load(argv[o.ind]);
 	kom_assert(l2b, "failed to open the input file.");
 	bwt = mb_bwt_libsais(l2b, both_strand, 5, n_thread);
@@ -147,27 +186,52 @@ int main_genbwt(int argc, char *argv[])
 	return 0;
 }
 
+static int usage_gensa(FILE *fp, int sa_bit)
+{
+	fprintf(fp, "Usage: minibwa gensa [options] <in.bwt> <out.bwt>\n");
+	fprintf(fp, "Options:\n");
+	fprintf(fp, "  -u INT    sample rate at 1/(1<<INT) [%d]\n", sa_bit);
+	fprintf(fp, "  -r        input BWT in the raw BWA format\n");
+	fprintf(fp, "  --help    print this help message\n");
+	return fp == stdout? 0 : 1;
+}
+
 int main_gensa(int argc, char *argv[])
 {
 	mb_bwt_t *bwt;
 	int c, sa_bit = 4, is_raw = 0;
 	ketopt_t o = KETOPT_INIT;
-	while ((c = ketopt(&o, argc, argv, 1, "ru:", 0)) >= 0) {
+	static ko_longopt_t long_opts[] = {
+		{ "help", ko_no_argument, 901 },
+		{ 0, 0, 0 }
+	};
+	while ((c = ketopt(&o, argc, argv, 1, "ru:", long_opts)) >= 0) {
 		if (c == 'u') sa_bit = atoi(o.arg);
 		else if (c == 'r') is_raw = 1;
+		else if (c == 901) return usage_gensa(stdout, sa_bit);
 	}
-	if (argc - o.ind < 2) {
-		fprintf(stderr, "Usage: minibwa gensa [options] <in.bwt> <out.bwt>\n");
-		fprintf(stderr, "Options:\n");
-		fprintf(stderr, "  -u INT    sample rate at 1/(1<<INT) [%d]\n", sa_bit);
-		fprintf(stderr, "  -r        input BWT in the raw BWA format\n");
-		return 1;
-	}
+	if (argc - o.ind < 2) return usage_gensa(stderr, sa_bit);
 	bwt = is_raw? mb_bwt_load_raw(argv[o.ind]) : mb_bwt_load(argv[o.ind]);
 	mb_bwt_gen_sa(bwt, sa_bit);
 	mb_bwt_save(argv[o.ind+1], bwt);
 	mb_bwt_destroy(bwt);
 	return 0;
+}
+
+static int usage_index(FILE *fp, uint64_t seed, int sa_bit, int n_thread)
+{
+	(void)n_thread;
+	fprintf(fp, "Usage: minibwa index [options] <in.fasta> [out.prefix]\n");
+	fprintf(fp, "Options:\n");
+	fprintf(fp, "  -s INT    random seed for amibiguous bases [%ld]\n", (unsigned long)seed);
+	fprintf(fp, "  -u INT    SA sample rate at 1/(1<<INT) [%d]\n", sa_bit);
+	fprintf(fp, "  -l        low-memory GPL'd algorithm for BWT construction\n");
+	fprintf(fp, "  -b NUM    block size (effective with -l) [10m]\n");
+#ifdef LIBSAIS_OPENMP
+	fprintf(fp, "  -t INT    number of threads (effective w/o -l) [%d]\n", n_thread);
+#endif
+	fprintf(fp, "  --help    print this help message\n");
+	return fp == stdout? 0 : 1;
 }
 
 int main_index(int argc, char *argv[])
@@ -179,26 +243,20 @@ int main_index(int argc, char *argv[])
 	char *prefix, *fn_l2b, *fn_bwt;
 	l2b_t *l2b;
 	mb_bwt_t *bwt;
+	static ko_longopt_t long_opts[] = {
+		{ "help", ko_no_argument, 901 },
+		{ 0, 0, 0 }
+	};
 
-	while ((c = ketopt(&o, argc, argv, 1, "ls:u:b:t:", 0)) >= 0) {
+	while ((c = ketopt(&o, argc, argv, 1, "ls:u:b:t:", long_opts)) >= 0) {
 		if (c == 't') n_thread = atoi(o.arg);
 		else if (c == 'l') low_mem = 1;
 		else if (c == 'b') block_size = kom_parse_num(o.arg, 0);
 		else if (c == 'u') sa_bit = atoi(o.arg);
 		else if (c == 's') seed = atol(o.arg);
+		else if (c == 901) return usage_index(stdout, seed, sa_bit, n_thread);
 	}
-	if (argc - o.ind == 0) {
-		fprintf(stderr, "Usage: minibwa index [options] <in.fasta> [out.prefix]\n");
-		fprintf(stderr, "Options:\n");
-		fprintf(stderr, "  -s INT    random seed for amibiguous bases [%ld]\n", (unsigned long)seed);
-		fprintf(stderr, "  -u INT    SA sample rate at 1/(1<<INT) [%d]\n", sa_bit);
-		fprintf(stderr, "  -l        low-memory GPL'd algorithm for BWT construction\n");
-		fprintf(stderr, "  -b NUM    block size (effective with -l) [10m]\n");
-#ifdef LIBSAIS_OPENMP
-		fprintf(stderr, "  -t INT    number of threads (effective w/o -l) [%d]\n", n_thread);
-#endif
-		return 1;
-	}
+	if (argc - o.ind == 0) return usage_index(stderr, seed, sa_bit, n_thread);
 
 	prefix = o.ind + 1 < argc? argv[o.ind+1] : argv[o.ind];
 	fn_l2b = kom_calloc(char, strlen(prefix) + 5);

@@ -38,6 +38,8 @@ static int usage(FILE *fp, int is_long)
 		fprintf(fp, "  Debugging:\n");
 		fprintf(fp, "    bench      performance evaluation\n");
 		fprintf(fp, "    fastmap    test seeding strategies\n");
+		fprintf(fp, "  Help:\n");
+		fprintf(fp, "    --help     print this help message\n");
 	} else {
 		fprintf(fp, "  index      index reference FASTA\n");
 		fprintf(fp, "  map        read alignment\n");
@@ -82,6 +84,19 @@ int main(int argc, char *argv[])
 
 typedef enum { MB_BENCH_2A, MB_BENCH_SA, MB_BENCH_MSA } mb_bench_type_t;
 
+static int usage_bench(FILE *fp, int intv)
+{
+	fprintf(fp, "Usage: minibwa bench [options] <in.mbw>\n");
+	fprintf(fp, "Options:\n");
+	fprintf(fp, "  -b STR         type: 2a, sa or msa [2a]\n");
+	fprintf(fp, "  -n NUM         number of data points [1m]\n");
+	fprintf(fp, "  -v INT         interval size for msa [%d]\n", intv);
+	fprintf(fp, "  -p             print results for each data point\n");
+	fprintf(fp, "  -1             use unbatched sa for msa\n");
+	fprintf(fp, "  --help         print this help message\n");
+	return fp == stdout? 0 : 1;
+}
+
 int main_bench(int argc, char *argv[])
 {
 	mb_bench_type_t type = MB_BENCH_2A;
@@ -91,8 +106,12 @@ int main_bench(int argc, char *argv[])
 	mb_bwt_t *bwt;
 	ketopt_t o = KETOPT_INIT;
 	double t;
+	static ko_longopt_t long_opts[] = {
+		{ "help", ko_no_argument, 901 },
+		{ 0, 0, 0 }
+	};
 
-	while ((c = ketopt(&o, argc, argv, 1, "pn:b:v:1", 0)) >= 0) {
+	while ((c = ketopt(&o, argc, argv, 1, "pn:b:v:1", long_opts)) >= 0) {
 		if (c == 'n') n = kom_parse_num(o.arg, 0);
 		else if (c == 'p') print_val = 1;
 		else if (c == '1') use_single = 1;
@@ -103,17 +122,9 @@ int main_bench(int argc, char *argv[])
 			else if (strcmp(o.arg, "msa") == 0) type = MB_BENCH_MSA;
 			else kom_assert(0, "unknown type");
 		}
+		else if (c == 901) return usage_bench(stdout, intv);
 	}
-	if (argc - o.ind < 1) {
-		fprintf(stderr, "Usage: minibwa bench [options] <in.mbw>\n");
-		fprintf(stderr, "Options:\n");
-		fprintf(stderr, "  -b STR         type: 2a, sa or msa [2a]\n");
-		fprintf(stderr, "  -n NUM         number of data points [1m]\n");
-		fprintf(stderr, "  -v INT         interval size for msa [%d]\n", intv);
-		fprintf(stderr, "  -p             print results for each data point\n");
-		fprintf(stderr, "  -1             use unbatched sa for msa\n");
-		return 1;
-	}
+	if (argc - o.ind < 1) return usage_bench(stderr, intv);
 
 	bwt = mb_bwt_load(argv[o.ind]);
 	t = kom_cputime();
