@@ -25,9 +25,7 @@ static void process_batch(const mb_opt_t *opt, const mb_idx_t *idx, mb_tbuf_t *t
 			putchar('\n');
 			free(h->p);
 		}
-		free(hit[k]);
-		free(seq[k]);
-		free(name[k]);
+		free(hit[k]); free(seq[k]); free(name[k]);
 	}
 	free(hit);
 	free(n_hit);
@@ -39,13 +37,12 @@ int main(int argc, char *argv[])
 	mb_idx_t *idx;
 	gzFile f;
 	kseq_t *ks;
-	int32_t n_seq;
-	int32_t *qlen;
+	int32_t n_seq, *qlen;
 	char **seq, **name;
 
 	mb_opt_init(&opt);
 	if (argc < 3) {
-		fprintf(stderr, "Usage: mbmap-lite <idxPrefix> <query.fa>\n");
+		fprintf(stderr, "Usage: mbmap-batch <idxPrefix> <query.fa>\n");
 		return 1;
 	}
 
