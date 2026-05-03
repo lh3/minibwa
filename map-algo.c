@@ -629,18 +629,93 @@ mb_hit_t *mb_map_sai(const mb_opt_t *opt, const mb_idx_t *idx, int64_t qlen, con
 
 mb_hit_t *mb_map(const mb_opt_t *opt, const mb_idx_t *idx, int32_t qlen, const char *seq0, int32_t *n_hit_, mb_tbuf_t *b0, const char *qname)
 {
+	mb_opt_t opt_adap;
 	mb_hit_t *ret;
 	mb_sai_v u = {0,0,0};
 	mb_tbuf_t *b;
 	uint8_t *seq;
 	int32_t i;
 	b = b0? b0 : mb_tbuf_init(1);
+	mb_opt_adap(opt, qlen, &opt_adap);
 	seq = Kmalloc(b->km, uint8_t, qlen);
 	for (i = 0; i < qlen; ++i)
 		seq[i] = kom_nt4_table[(uint8_t)seq0[i]];
 	mb_seed_intv(b->km, idx->bwt, qlen, seq, opt->min_len, opt->max_sub_occ, &u);
-	ret = mb_map_sai(opt, idx, qlen, seq, &u, n_hit_, b, qname);
+	ret = mb_map_sai(&opt_adap, idx, qlen, seq, &u, n_hit_, b, qname);
 	kfree(b->km, seq);
 	if (b0 == 0) mb_tbuf_destroy(b);
 	return ret;
+}
+
+mb_hit_t **mb_map_batch(const mb_opt_t *opt, const mb_idx_t *idx, int32_t n_seq, const int32_t *qlen, const char **seq, int32_t is_pe, int32_t *n_hit, mb_tbuf_t *b0, const char **qname)
+{
+	mb_tbuf_t *b;
+	mb_hit_t **hit;
+	mb_sai_v *sai;
+	uint8_t **seq4;
+	void *km;
+	int32_t i, j, k, sb_st, sb_len, sb_max;
+
+	if (n_seq <= 0) return 0;
+	b = b0? b0 : mb_tbuf_init(0);
+	km = mb_tbuf_km(b);
+	hit = (mb_hit_t**)calloc(n_seq, sizeof(mb_hit_t*));
+
+	// pre-allocate for sub-batch processing
+	sb_max = opt->sb_seq < n_seq? opt->sb_seq : n_seq;
+	seq4 = Kmalloc(km, uint8_t*, sb_max);
+	sai = Kmalloc(km, mb_sai_v, sb_max);
+
+	// process in sub-batches
+	for (i = 0, sb_st = 0, sb_len = 0; i <= n_seq; ++i) {
+		if (i == n_seq || sb_len >= opt->sb_len || i - sb_st >= opt->sb_seq) {
+			int32_t sb_n = i - sb_st;
+			if (sb_n == 0) { sb_st = i; sb_len = 0; continue; }
+
+			// convert sub-batch to 4-bit encoding
+			for (k = 0; k < sb_n; ++k) {
+				int32_t idx_k = sb_st + k;
+				seq4[k] = Kmalloc(km, uint8_t, qlen[idx_k]);
+				for (j = 0; j < qlen[idx_k]; ++j)
+					seq4[k][j] = kom_nt4_table[(uint8_t)seq[idx_k][j]];
+			}
+
+			// batch SMEM for sub-batch
+			memset(sai, 0, sb_n * sizeof(mb_sai_v));
+			mb_seed_intv_batch(km, idx->bwt, sb_n, &qlen[sb_st], seq4, opt->min_len, opt->max_sub_occ, sai);
+
+			// map each sequence in sub-batch
+			for (k = 0; k < sb_n; ++k) {
+				int32_t idx_k = sb_st + k;
+				mb_opt_t opt_adap;
+				mb_opt_adap(opt, qlen[idx_k], &opt_adap);
+				hit[idx_k] = mb_map_sai(&opt_adap, idx, qlen[idx_k], seq4[k], &sai[k], &n_hit[idx_k], b, qname? qname[idx_k] : 0);
+				kfree(km, seq4[k]);
+			}
+
+			sb_st = i;
+			sb_len = 0;
+		}
+		if (i < n_seq) sb_len += qlen[i];
+	}
+
+	kfree(km, sai);
+	kfree(km, seq4);
+
+	// paired-end processing
+	if (is_pe && n_seq >= 2) {
+		mb_pestat_t pes[4];
+		for (i = 0; i < 4; ++i) pes[i].failed = 1;
+		pes[1].failed = 0;
+		pes[1].avg = opt->pe_avg, pes[1].std = opt->pe_std;
+		pes[1].lo = opt->pe_lo, pes[1].hi = opt->pe_hi;
+		for (i = 0; i + 1 < n_seq; i += 2) {
+			int32_t len2[2] = { qlen[i], qlen[i+1] };
+			char *seq2[2] = { (char*)seq[i], (char*)seq[i+1] };
+			mb_pair(km, opt, idx->l2b, &n_hit[i], &hit[i], pes, len2, seq2);
+		}
+	}
+
+	if (b0 == 0) mb_tbuf_destroy(b);
+	return hit;
 }
