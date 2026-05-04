@@ -1,12 +1,109 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <zlib.h>
 #include "libsais64.h"
 #include "kommon.h"
 #include "ketopt.h"
 #include "mbpriv.h"
+#include "kseq.h"
+KSEQ_DECLARE(gzFile)
 
 void mb_bwtgen(const char *fn_pac, const char *fn_bwt, int block_size);
+
+// --meth: write doubled c2t FASTA (>r<name> G->A, >f<name> C->T) next to <fa>.
+// Format: uppercased, 100bp wrap. Skipped if <fa>.bwameth.c2t is fresher than <fa>.
+
+static void meth_project_and_write(FILE *out, const char *prefix, const char *name,
+                                   const char *seq, size_t len, char from, char to)
+{
+	char buf[65536];
+	size_t bl = 0, i;
+	fprintf(out, ">%s%s\n", prefix, name);
+	for (i = 0; i < len; ++i) {
+		if (bl + 2 > sizeof(buf)) { fwrite(buf, 1, bl, out); bl = 0; }
+		char c = seq[i];
+		buf[bl++] = (c == from) ? to : c;
+		if (((i + 1) % 100) == 0) buf[bl++] = '\n';
+	}
+	if (len % 100 != 0) {
+		if (bl + 1 > sizeof(buf)) { fwrite(buf, 1, bl, out); bl = 0; }
+		buf[bl++] = '\n';
+	}
+	if (bl) fwrite(buf, 1, bl, out);
+}
+
+static int meth_c2t_is_fresh(const char *in_fa, const char *out_fa)
+{
+	struct stat a, b;
+	if (stat(in_fa, &a) != 0 || stat(out_fa, &b) != 0) return 0;
+	return b.st_mtime > a.st_mtime; // strict: same mtime (1s resolution) means rebuild
+}
+
+static int meth_write_c2t_fasta(const char *fa, char *out_fa, size_t out_fa_cap)
+{
+	int n = snprintf(out_fa, out_fa_cap, "%s.bwameth.c2t", fa);
+	if (n <= 0 || (size_t)n >= out_fa_cap) {
+		if (kom_verbose >= 1) fprintf(stderr, "ERROR: reference path too long\n");
+		return 1;
+	}
+	if (meth_c2t_is_fresh(fa, out_fa)) {
+		if (kom_verbose >= 2)
+			fprintf(stderr, "[index:--meth] %s is newer than %s; skipping c2t FASTA emission\n",
+			        out_fa, fa);
+		return 0;
+	}
+	gzFile in = gzopen(fa, "r");
+	if (in == 0) {
+		if (kom_verbose >= 1) fprintf(stderr, "ERROR: cannot open %s\n", fa);
+		return 2;
+	}
+	FILE *out = fopen(out_fa, "w");
+	if (out == 0) {
+		if (kom_verbose >= 1) fprintf(stderr, "ERROR: cannot open %s for writing\n", out_fa);
+		gzclose(in);
+		return 3;
+	}
+	if (kom_verbose >= 2) fprintf(stderr, "[index:--meth] writing %s ...\n", out_fa);
+
+	kseq_t *seq = kseq_init(in);
+	int64_t total_bases = 0, n_seqs = 0;
+	int kr = 0;
+	while ((kr = kseq_read(seq)) >= 0) {
+		size_t i;
+		// upper-case before projection (soft-masked input round-trips like bwameth.py)
+		for (i = 0; i < seq->seq.l; ++i) {
+			char c = seq->seq.s[i];
+			if (c >= 'a' && c <= 'z') seq->seq.s[i] = (char)(c - 'a' + 'A');
+		}
+		meth_project_and_write(out, "r", seq->name.s, seq->seq.s, seq->seq.l, 'G', 'A');
+		meth_project_and_write(out, "f", seq->name.s, seq->seq.s, seq->seq.l, 'C', 'T');
+		total_bases += (int64_t)seq->seq.l;
+		++n_seqs;
+	}
+	kseq_destroy(seq);
+	gzclose(in);
+	// kseq_read: -1 = EOF, < -1 = parse/IO error; drop partial file so freshness check rebuilds
+	if (kr < -1) {
+		fclose(out);
+		unlink(out_fa);
+		if (kom_verbose >= 1)
+			fprintf(stderr, "ERROR: failed while reading %s (kseq_read=%d)\n", fa, kr);
+		return 4;
+	}
+	if (fclose(out) != 0) {
+		unlink(out_fa);
+		if (kom_verbose >= 1) fprintf(stderr, "ERROR: failed to close %s\n", out_fa);
+		return 4;
+	}
+	if (kom_verbose >= 2)
+		fprintf(stderr, "[index:--meth] emitted %ld seqs, %ld bp (doubled to %ld bp of c2t text)\n",
+		        (long)n_seqs, (long)total_bases, (long)(2 * total_bases));
+	return 0;
+}
 
 static mb_bwt_t *mb_bwt_libsais(const l2b_t *l2b, int sa_bit, int both_strand, int n_thread)
 {
@@ -230,6 +327,9 @@ static int usage_index(FILE *fp, uint64_t seed, int sa_bit, int n_thread)
 #ifdef LIBSAIS_OPENMP
 	fprintf(fp, "  -t INT    number of threads (effective w/o -l) [%d]\n", n_thread);
 #endif
+	fprintf(fp, "  --meth    build a bwameth-style doubled c2t reference (writes\n");
+	fprintf(fp, "            <in.fasta>.bwameth.c2t and indexes that). Use with\n");
+	fprintf(fp, "            `minibwa map --meth <in.fasta> R1.fq [R2.fq]`.\n");
 	fprintf(fp, "  --help    print this help message\n");
 	return fp == stdout? 0 : 1;
 }
@@ -237,14 +337,17 @@ static int usage_index(FILE *fp, uint64_t seed, int sa_bit, int n_thread)
 int main_index(int argc, char *argv[])
 {
 	ketopt_t o = KETOPT_INIT;
-	int c, low_mem = 0, n_thread = 4, sa_bit = 4;
+	int c, low_mem = 0, n_thread = 4, sa_bit = 4, meth = 0;
 	int64_t block_size = 10000000;
 	uint64_t seed = 11;
 	char *prefix, *fn_l2b, *fn_bwt;
+	const char *fa_in;
+	char meth_c2t_path[4096];
 	l2b_t *l2b;
 	mb_bwt_t *bwt;
 	static ko_longopt_t long_opts[] = {
 		{ "help", ko_no_argument, 901 },
+		{ "meth", ko_no_argument, 1000 },
 		{ 0, 0, 0 }
 	};
 
@@ -255,16 +358,32 @@ int main_index(int argc, char *argv[])
 		else if (c == 'u') sa_bit = atoi(o.arg);
 		else if (c == 's') seed = atol(o.arg);
 		else if (c == 901) return usage_index(stdout, seed, sa_bit, n_thread);
+		else if (c == 1000) meth = 1;
 	}
 	if (argc - o.ind == 0) return usage_index(stderr, seed, sa_bit, n_thread);
 
-	prefix = o.ind + 1 < argc? argv[o.ind+1] : argv[o.ind];
+	fa_in = argv[o.ind];
+	if (meth) {
+		/* Reject -p / explicit out-prefix for --meth: the c2t flow is
+		 * keyed off "<in.fasta>.bwameth.c2t" both at index time and at
+		 * map time, and silently overriding it would only confuse. */
+		if (o.ind + 1 < argc) {
+			if (kom_verbose >= 1)
+				fprintf(stderr, "ERROR: --meth does not accept an explicit out-prefix (use bare <in.fasta>)\n");
+			return 1;
+		}
+		int rc = meth_write_c2t_fasta(fa_in, meth_c2t_path, sizeof(meth_c2t_path));
+		if (rc != 0) return rc;
+		fa_in = meth_c2t_path; /* index the doubled FASTA */
+	}
+
+	prefix = (!meth && o.ind + 1 < argc) ? argv[o.ind+1] : (char *)fa_in;
 	fn_l2b = kom_calloc(char, strlen(prefix) + 5);
 	strcat(strcpy(fn_l2b, prefix), ".l2b");
 	fn_bwt = kom_calloc(char, strlen(prefix) + 5);
 	strcat(strcpy(fn_bwt, prefix), ".mbw");
 
-	l2b = l2b_import(argv[o.ind], seed);
+	l2b = l2b_import(fa_in, seed);
 	kom_assert(l2b, "failed to read the genome FASTA.");
 	if (low_mem) {
 #ifdef USE_GPL
