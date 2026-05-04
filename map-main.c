@@ -327,6 +327,7 @@ static int usage(FILE *fp, const mb_opt_t *opt)
 	fprintf(fp, "    -O INT1[,INT2]   gap open penalty [%d,%d]\n", opt->q, opt->q2);
 	fprintf(fp, "    -E INT1[,INT2]   gap extension penalty [%d,%d]\n", opt->e, opt->e2);
 	fprintf(fp, "    -s INT           suppress alignment with DP score lower than INT*{-A} [%d]\n", opt->min_dp_max);
+	fprintf(fp, "    -L INT[,INT]     5'/3' soft-clip penalty (extend through noisy ends if `mqe + end_bonus + L >= max`) [%d,%d]\n", opt->pen_clip5, opt->pen_clip3);
 	fprintf(fp, "  Paired-end:\n");
 	fprintf(fp, "    -P               skip pairing and mate resuce\n");
 	fprintf(fp, "    --rescue=INT     mate rescue for up to INT candidates; 0 to skip rescue [%d]\n", opt->max_rescue);
@@ -357,7 +358,7 @@ static inline void yes_or_no(mb_opt_t *opt, uint64_t flag, int long_idx, const c
 
 int main_map(int argc, char *argv[])
 {
-	const char *opt_str = "x:o:k:c:m:p:A:B:b:O:E:t:K:N:PyYR:aul:w:W:g:5s:";
+	const char *opt_str = "x:o:k:c:m:p:A:B:b:O:E:L:t:K:N:PyYR:aul:w:W:g:5s:";
 	int32_t c;
 	mb_idx_t *idx;
 	mb_opt_t mo;
@@ -399,6 +400,13 @@ int main_map(int argc, char *argv[])
 		else if (c == '5') mo.flag |= MB_F_PRIMARY5;
 		else if (c == 'P') mo.flag |= MB_F_NO_PAIRING;
 		else if (c == 's') mo.min_dp_max = atoi(o.arg);
+		else if (c == 'L') {
+			char *p = NULL;
+			long v = strtol(o.arg, &p, 10);
+			mo.pen_clip5 = mo.pen_clip3 = (int32_t)v;
+			if (p && *p == ',')
+				mo.pen_clip3 = (int32_t)strtol(p + 1, NULL, 10);
+		}
 		else if (c == 'o') fn_out = o.arg;
 		else if (c == 't') mo.n_thread = atoi(o.arg);
 		else if (c == 'R') rg_line = o.arg;
