@@ -22,6 +22,7 @@
 #define MB_F_ADAP             (0x4000LL)    // adaptive mode
 #define MB_F_PRIMARY5         (0x8000LL)
 #define MB_F_NO_PAIRING       (0x10000LL)
+#define MB_F_METH             (0x20000LL)   // bisulfite (methylation) mode; set when --meth is given
 
 #define MB_CIGAR_MATCH      0
 #define MB_CIGAR_INS        1
@@ -82,6 +83,8 @@ typedef struct {
 	int64_t max_mb_size;
 	int64_t max_sw_mat;
 	int64_t cap_kalloc;
+	char    meth_set_as_failed; // --set-as-failed: 'f', 'r', or 0
+	int32_t meth_no_chim;       // --do-not-penalize-chimeras
 } mb_opt_t;
 
 struct mb_idx_s;
@@ -111,7 +114,7 @@ typedef struct {
 	int32_t mlen, blen;
 	int32_t mapq;
 	uint32_t hash;
-	uint32_t rev:1, proper_pair:1, sam_pri:1, flt:1, inv:1, split:2, split_inv:1, rescued:1, frac_high:8, dummy:15;
+	uint32_t rev:1, proper_pair:1, sam_pri:1, flt:1, inv:1, split:2, split_inv:1, rescued:1, frac_high:8, qc_fail:1, dummy:14;
 	mb_extra_t *p;
 } mb_hit_t;
 

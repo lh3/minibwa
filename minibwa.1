@@ -300,7 +300,15 @@ Output up to
 secondary alignments [0]. Primary and supplementary alignments are always outputted.
 .TP
 .B -y
-Copy FASTA/Q comments to output
+Append SAM-tag-formatted segments of the FASTA/Q comment to the SAM
+record. The comment is split on tab characters; each segment must
+conform to the SAM aux tag format (e.g.
+.IR BC:Z:CGTAC ),
+and segments that do not match are silently dropped. This safely
+accepts raw Illumina-format fastq, whose
+.IR \(dq1:N:0:CAAGGTAC+NAGATACG\(dq -style
+header tail does not conform to SAM and would otherwise produce a
+malformed aux field; that header tail is discarded.
 .TP
 .B -Y
 In the SAM output, use soft clipping for supplementary alignments

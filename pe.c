@@ -348,7 +348,13 @@ static const mb_hit_t *mb_matesw_core(void *km, const mb_opt_t *opt, const l2b_t
 				if (ts2 < ts) ts2 = ts;
 				if (te2 > te) te2 = te;
 			}
-			if (max_ug >= 10 || max_ug >= n_kmer * 0.33)
+			/* Under --meth the bisulfite-projected R2 has a 2-letter alphabet
+			 * (A/T after G->A) and the k=7 ungapped prefilter mis-rejects
+			 * ~90% of rescuable candidates because contiguous 7-mer matches
+			 * are rare in low-complexity space. Bypass the prefilter under
+			 * --meth and let mb_matesw_align decide; bwa-mem has no
+			 * equivalent prefilter. */
+			if ((opt->flag & MB_F_METH) || max_ug >= 10 || max_ug >= n_kmer * 0.33)
 				mb_matesw_align(km, opt, len, seq[is_rev], te2 - ts2, &ref[ts2 - ts], &ht, min_sc, ez);
 			if (ht.p) { // a good hit found
 				ht.tid = h0->tid;

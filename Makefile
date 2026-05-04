@@ -3,7 +3,7 @@ CFLAGS=		-std=c99 -g -Wall -O3
 CPPFLAGS=
 LDFLAGS=
 INCLUDES=
-LOBJS=		kommon.o kalloc.o bwt.o l2bit.o options.o seed.o map-algo.o lchain.o align.o pe.o cs.o format.o \
+LOBJS=		kommon.o kalloc.o bwt.o l2bit.o options.o seed.o map-algo.o lchain.o align.o pe.o cs.o format.o meth.o \
 			ksw2_extz2_sse.o ksw2_extd2_sse.o ksw2_ll_sse.o
 AOBJS=		kthread.o libsais.o libsais64.o index.o bseq.o map-main.o fastmap.o
 MALLOC_O=	mimalloc.o
@@ -71,9 +71,10 @@ bwtgen.o: QSufSort.h
 cs.o: mbpriv.h minibwa.h l2bit.h bwt.h kommon.h bseq.h kalloc.h
 fastmap.o: mbpriv.h minibwa.h l2bit.h bwt.h kommon.h bseq.h ketopt.h kseq.h
 fastmap.o: kalloc.h
-format.o: mbpriv.h minibwa.h l2bit.h bwt.h kommon.h bseq.h
+format.o: mbpriv.h minibwa.h l2bit.h bwt.h kommon.h bseq.h meth.h
 index.o: libsais64.h kommon.h ketopt.h mbpriv.h minibwa.h l2bit.h bwt.h
-index.o: bseq.h
+index.o: bseq.h kseq.h
+meth.o: meth.h l2bit.h
 kalloc.o: kalloc.h
 kommon.o: kommon.h
 ksw2_extd2_sse.o: ksw2.h

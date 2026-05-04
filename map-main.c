@@ -16,6 +16,7 @@ typedef struct {
 	const mb_opt_t *opt;
 	mb_bseq_file_t **fp;
 	const mb_idx_t *idx;
+	const mb_meth_cmap_t *cmap; // bisulfite chrom-consolidation map; NULL outside --meth
 	FILE *fp_out;
 } pipeline_t;
 
@@ -103,7 +104,7 @@ static void *worker_pipeline(void *shared, int step, void *in)
 	const mb_opt_t *opt = p->opt;
     if (step == 0) { // step 0: read sequences
 		int with_qual = !!(opt->flag & MB_F_SAM);
-		int with_comment = !!(opt->flag & MB_F_COPY_COMMENT);
+		int with_comment = !!(opt->flag & MB_F_COPY_COMMENT); // --meth implies MB_F_COPY_COMMENT (set in main_map)
 		int frag_mode = (p->n_fp > 1 || !!(opt->flag & MB_F_PE));
         step_t *s;
         s = kom_calloc(step_t, 1);
@@ -115,6 +116,8 @@ static void *worker_pipeline(void *shared, int step, void *in)
 			for (i = 0; i < 4; ++i) s->pes[i].failed = 1;
 			for (i = 0; i < s->n_seq; ++i)
 				s->seq[i].id = p->n_seq++;
+			if (opt->flag & MB_F_METH)
+				mb_meth_ingest(s->n_seq, s->seq, frag_mode, p->n_fp > 1);
 			s->tbuf = kom_calloc(mb_tbuf_t*, opt->n_thread);
 			for (i = 0; i < opt->n_thread; ++i)
 				s->tbuf[i] = mb_tbuf_init(opt->flag&MB_F_NO_KALLOC);
@@ -192,6 +195,9 @@ static void *worker_pipeline(void *shared, int step, void *in)
 		for (k = 0; k < s->n_frag; ++k) {
 			int32_t seg_st = s->seg_off[k], seg_en = s->seg_off[k] + s->seg_cnt[k];
 			out.l = 0;
+			if (opt->flag & MB_F_METH) // chimera QC must run before mb_format reads qc_fail/proper_pair
+				mb_meth_apply_qc(opt, p->cmap, &s->seq[seg_st], seg_en - seg_st,
+				                 &s->n_hit[seg_st], &s->hit[seg_st]);
 			for (i = seg_st; i < seg_en; ++i) {
 				mb_bseq1_t *t = &s->seq[i];
 				int32_t mate_qlen = 0; // mate's l_seq for MC:Z; 0 suppresses MC/MQ
@@ -205,11 +211,11 @@ static void *worker_pipeline(void *shared, int step, void *in)
 					for (j = 0; j < s->n_hit[i]; ++j) {
 						const mb_hit_t *h = &s->hit[i][j];
 						if (h->parent == h->id || n_sec < opt->out_n)
-							mb_format(km, &out, idx->l2b, t, seg_en - seg_st, &s->n_hit[seg_st], &s->hit[seg_st], j, opt->flag, i - seg_st, mate_qlen);
+							mb_format(km, &out, idx->l2b, p->cmap, t, seg_en - seg_st, &s->n_hit[seg_st], &s->hit[seg_st], j, opt->flag, i - seg_st, mate_qlen);
 						n_sec += (h->parent != h->id);
 					}
 				} else if (!(opt->flag & MB_F_NO_UNMAP)) { // TODO: output unmapped reads
-					mb_format(km, &out, idx->l2b, t, seg_en - seg_st, &s->n_hit[seg_st], &s->hit[seg_st], -1, opt->flag, i - seg_st, mate_qlen);
+					mb_format(km, &out, idx->l2b, p->cmap, t, seg_en - seg_st, &s->n_hit[seg_st], &s->hit[seg_st], -1, opt->flag, i - seg_st, mate_qlen);
 				}
 			}
 			fwrite(out.s, 1, out.l, s->p->fp_out);
@@ -250,7 +256,7 @@ static mb_bseq_file_t **mb_open_bseqs(int n, const char **fn)
 	return fp;
 }
 
-int32_t mb_map_file(const mb_opt_t *opt, const mb_idx_t *idx, int32_t n, const char **fn, const char *fn_out)
+int32_t mb_map_file(const mb_opt_t *opt, const mb_idx_t *idx, const mb_meth_cmap_t *cmap, int32_t n, const char **fn, const char *fn_out)
 {
 	int32_t i, pl_thread;
 	pipeline_t pl;
@@ -261,7 +267,7 @@ int32_t mb_map_file(const mb_opt_t *opt, const mb_idx_t *idx, int32_t n, const c
 	pl.n_fp = n;
 	pl.fp = mb_open_bseqs(pl.n_fp, fn);
 	if (pl.fp == 0) return -1;
-	pl.opt = opt, pl.idx = idx;
+	pl.opt = opt, pl.idx = idx, pl.cmap = cmap;
 	pl.mb_size = opt->mb_size;
 	pl_thread = opt->n_thread <= 2? opt->n_thread : 3;
 
@@ -294,6 +300,9 @@ static ko_longopt_t long_options[] = {
 	{ "dbg-qname",    ko_no_argument,       604 },
 	{ "dbg-aln-pe",   ko_no_argument,       605 },
 	{ "dbg-an-pos",   ko_no_argument,       606 }, // anchor position
+	{ "meth",                     ko_no_argument,       701 },
+	{ "set-as-failed",            ko_required_argument, 702 }, // 'f' or 'r' — flag matching-strand reads
+	{ "do-not-penalize-chimeras", ko_no_argument,       703 }, // disable longest-M chimera heuristic
 	{ "version",      ko_no_argument,       901 },
 	{ "help",         ko_no_argument,       902 },
 	{ 0, 0, 0 }
@@ -331,11 +340,15 @@ static int usage(FILE *fp, const mb_opt_t *opt)
 	fprintf(fp, "  Paired-end:\n");
 	fprintf(fp, "    -P               skip pairing and mate resuce\n");
 	fprintf(fp, "    --rescue=INT     mate rescue for up to INT candidates; 0 to skip rescue [%d]\n", opt->max_rescue);
+	fprintf(fp, "  Bisulfite (methylation):\n");
+	fprintf(fp, "    --meth                          enable bisulfite mode\n");
+	fprintf(fp, "    --set-as-failed=f|r             flag matching-strand reads with 0x200\n");
+	fprintf(fp, "    --do-not-penalize-chimeras      skip the longest-M chimera heuristic\n");
 	fprintf(fp, "  Input/Output:\n");
 	fprintf(fp, "    -o FILE          output file name [stdout]\n");
 	fprintf(fp, "    -u               don't output unmapped reads\n");
 	fprintf(fp, "    --outn=INT       output up to INT secondary alignments [0]\n");
-	fprintf(fp, "    -y               copy FASTA/Q comments to output\n");
+	fprintf(fp, "    -y               copy SAM-tag-formatted FASTA/Q comment segments to output\n");
 	fprintf(fp, "    -Y               use soft clipping for supplementary alignments\n");
 	fprintf(fp, "    -K NUM1[,NUM2]   process NUM1-NUM2 bp of query sequences in a batch [100m,1g]\n");
 	fprintf(fp, "    --version        print version number\n");
@@ -402,10 +415,14 @@ int main_map(int argc, char *argv[])
 		else if (c == 's') mo.min_dp_max = atoi(o.arg);
 		else if (c == 'L') {
 			char *p = NULL;
-			long v = strtol(o.arg, &p, 10);
-			mo.pen_clip5 = mo.pen_clip3 = (int32_t)v;
-			if (p && *p == ',')
-				mo.pen_clip3 = (int32_t)strtol(p + 1, NULL, 10);
+			mo.pen_clip5 = mo.pen_clip3 = (int32_t)strtol(o.arg, &p, 10);
+			if (p == o.arg || (*p != 0 && *p != ',')) goto bad_L;
+			if (*p == ',') {
+				char *q = NULL;
+				mo.pen_clip3 = (int32_t)strtol(p + 1, &q, 10);
+				if (q == p + 1 || *q != 0) goto bad_L;
+			}
+			if (0) { bad_L: fprintf(stderr, "[ERROR] malformed -L: %s\n", o.arg); return 1; }
 		}
 		else if (c == 'o') fn_out = o.arg;
 		else if (c == 't') mo.n_thread = atoi(o.arg);
@@ -441,6 +458,21 @@ int main_map(int argc, char *argv[])
 			kom_dbg_flag |= MB_DBG_ALN_PE;
 		} else if (c == 606) { // --dbg-an-pos
 			kom_dbg_flag |= MB_DBG_AN_POS;
+		} else if (c == 701) { // --meth
+			mo.flag |= MB_F_METH | MB_F_COPY_COMMENT;
+			// match bwameth.py's `bwa mem -T 40 -B 2 -A 1`; pen_clip / end_bonus / min_chain_score = bwa-mem defaults
+			mo.a = 1, mo.b = 2, mo.min_dp_max = 40;
+			mo.pen_clip5 = mo.pen_clip3 = 5;
+			mo.end_bonus = 5;
+			mo.min_chain_score = 10;
+		} else if (c == 702) { // --set-as-failed=f|r
+			if (o.arg == 0 || (o.arg[0] != 'f' && o.arg[0] != 'r') || o.arg[1] != '\0') {
+				fprintf(stderr, "[ERROR] --set-as-failed expects 'f' or 'r'\n");
+				return 1;
+			}
+			mo.meth_set_as_failed = o.arg[0];
+		} else if (c == 703) { // --do-not-penalize-chimeras
+			mo.meth_no_chim = 1;
 		} else if (c == 'K') {
 			mo.mb_size = mo.max_mb_size = kom_parse_num(o.arg, &s);
 			if (*s == ',') mo.max_mb_size = kom_parse_num(s + 1, &s);
@@ -471,21 +503,45 @@ int main_map(int argc, char *argv[])
 	if (argc - o.ind < 2)
 		return usage(stderr, &mo);
 
-	idx = mb_idx_load(argv[o.ind]);
+	// --meth: auto-append ".bwameth.c2t" if the user passed the bare reference
+	char meth_ref_buf[4096];
+	const char *ref_prefix = argv[o.ind];
+	if (mo.flag & MB_F_METH) {
+		const char *suffix = ".bwameth.c2t";
+		size_t slen = strlen(suffix);
+		size_t alen = strlen(argv[o.ind]);
+		int already_c2t = (alen >= slen) &&
+			(strcmp(argv[o.ind] + alen - slen, suffix) == 0);
+		if (!already_c2t) {
+			int n = snprintf(meth_ref_buf, sizeof(meth_ref_buf), "%s%s", argv[o.ind], suffix);
+			if (n <= 0 || (size_t)n >= sizeof(meth_ref_buf)) {
+				fprintf(stderr, "[ERROR] reference path too long for --meth\n");
+				return 1;
+			}
+			ref_prefix = meth_ref_buf;
+			if (kom_verbose >= 3)
+				fprintf(stderr, "[M::%s] --meth: resolved index prefix to %s\n", __func__, ref_prefix);
+		}
+	}
+
+	idx = mb_idx_load(ref_prefix);
 	kom_assert(idx, "failed to load the index.");
 	if (kom_verbose >= 3)
 		fprintf(stderr, "[M::%s::%.3f*%.2f] index loaded\n", __func__, kom_realtime(), kom_percent_cpu());
 
+	mb_meth_cmap_t *cmap = (mo.flag & MB_F_METH)? mb_meth_cmap_build(idx->l2b) : 0;
+
 	if (mo.flag & MB_F_SAM) {
 		int ret;
 		kstring_t out = {0,0,0};
-		ret = mb_fmt_sam_hdr(&out, idx->l2b, rg_line, MB_VERSION, argc, argv);
-		if (ret < 0) return 1; // TODO: free idx and out.s
+		ret = mb_fmt_sam_hdr(&out, idx->l2b, cmap, rg_line, MB_VERSION, argc, argv);
+		if (ret < 0) { mb_meth_cmap_free(cmap); mb_idx_destroy(idx); return 1; }
 		fwrite(out.s, 1, out.l, stdout);
 		free(out.s);
 	}
 
-	mb_map_file(&mo, idx, argc - (o.ind + 1), (const char**)&argv[o.ind+1], fn_out);
+	mb_map_file(&mo, idx, cmap, argc - (o.ind + 1), (const char**)&argv[o.ind+1], fn_out);
+	mb_meth_cmap_free(cmap);
 	mb_idx_destroy(idx);
 	return 0;
 }
