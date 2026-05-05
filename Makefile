@@ -10,7 +10,21 @@ MALLOC_O=	mimalloc.o
 PROG=		minibwa
 LIBS=		-lpthread -lz -lm
 ARCH=		$(shell uname -m)
-omp=		$(shell printf '\043include <omp.h>\nint main(){return 0;}' | $(CC) -x c -fopenmp -o /dev/null - 2>/dev/null && echo "1" || echo "0")
+UNAME_S=	$(shell uname -s)
+
+# OpenMP is on by default. Linux compilers accept -fopenmp directly; macOS Apple
+# Clang needs -Xpreprocessor -fopenmp plus libomp from Homebrew (default prefix
+# /opt/homebrew/opt/libomp on Apple Silicon, /usr/local/opt/libomp on Intel).
+# Override LIBOMP_PREFIX for a non-Homebrew libomp, or pass omp=0 to disable.
+ifeq ($(UNAME_S),Darwin)
+	LIBOMP_PREFIX?=	$(shell test -d /opt/homebrew/opt/libomp && echo /opt/homebrew/opt/libomp || echo /usr/local/opt/libomp)
+	omp_cflags=	-Xpreprocessor -fopenmp -I$(LIBOMP_PREFIX)/include
+	omp_libs=	-L$(LIBOMP_PREFIX)/lib -Wl,-rpath,$(LIBOMP_PREFIX)/lib -lomp
+else
+	omp_cflags=	-fopenmp
+	omp_libs=	-fopenmp
+endif
+omp?=		$(shell printf '\043include <omp.h>\nint main(){return omp_get_max_threads();}' | $(CC) -x c $(omp_cflags) - $(omp_libs) -o /dev/null 2>/dev/null && echo "1" || echo "0")
 
 ifneq ($(asan),)
 	CFLAGS+=-fsanitize=address
@@ -20,8 +34,8 @@ endif
 
 ifeq ($(omp),1)
 	CPPFLAGS+=-DLIBSAIS_OPENMP
-	CFLAGS+=-fopenmp
-	LIBS+=-fopenmp
+	CFLAGS+=$(omp_cflags)
+	LIBS+=$(omp_libs)
 endif
 
 ifneq ($(gpl),0)
