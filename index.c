@@ -8,7 +8,7 @@
 
 void mb_bwtgen(const char *fn_pac, const char *fn_bwt, int block_size);
 
-mb_bwt_t *mb_bwt_libsais(const l2b_t *l2b, int sa_bit, int both_strand, int n_thread)
+static mb_bwt_t *mb_bwt_libsais(const l2b_t *l2b, int sa_bit, int both_strand, int n_thread)
 {
 	const int fs = 10000;
 	uint8_t *seq;
@@ -179,7 +179,7 @@ int main_genbwt(int argc, char *argv[])
 	if (argc - o.ind < 2) return usage_genbwt(stderr, sa_bit, n_thread);
 	l2b = l2b_load(argv[o.ind]);
 	kom_assert(l2b, "failed to open the input file.");
-	bwt = mb_bwt_libsais(l2b, both_strand, 5, n_thread);
+	bwt = mb_bwt_libsais(l2b, sa_bit, both_strand, n_thread);
 	l2b_destroy(l2b);
 	mb_bwt_save(argv[o.ind+1], bwt);
 	mb_bwt_destroy(bwt);
