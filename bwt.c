@@ -3,6 +3,9 @@
 #include <string.h>
 #include <assert.h>
 #include <stdint.h>
+#ifdef LIBSAIS_OPENMP
+#include <omp.h>
+#endif
 #include "kommon.h"
 #include "kalloc.h"
 #include "bwt.h"
@@ -102,6 +105,119 @@ mb_bwt_t *mb_bwt_init_from_raw(int is_byte, const void *raw_, uint64_t len, uint
 	for (i = 0, bwt->L2[0] = 0; i < 4; ++i)
 		bwt->L2[i+1] = bwt->L2[i] + c[i];
 	assert(bwt->L2[4] == len);
+	return bwt;
+}
+
+// Build the rank dict from a byte-packed inverted SA (one BWT char per byte,
+// lower 2 bits used). The single k where a[k]==0 is the implicit $
+// ('primary') and is skipped here. Distinct from mb_bwt_init_from_raw above
+// (which packs 4 chars/byte for the GPL bwtgen path) to keep its hot loop
+// branch-free.
+//
+// Parallel via a 3-phase scan: each thread packs its blocks' BWT bits and a
+// local count starting from zero; serial prefix-sum yields per-thread start
+// offsets; each thread then adds its start offset to the lower 56 bits of
+// every block-count word it owns. The byte-64 delta in the upper 8 bits is
+// invariant under that shift, so phase 3 leaves it alone.
+mb_bwt_t *mb_bwt_init_from_inverted_sa(const uint8_t *a, int64_t len, int64_t primary, int n_thread)
+{
+	mb_bwt_t *bwt;
+	int64_t total_blocks = (len + 127) / 128;
+	uint64_t *delta_c, *start_c;
+	int nt, n_used;
+
+	bwt = mb_bwt_init();
+	bwt->primary = primary;
+	bwt->seq_len = len;
+	bwt->data_len = mb_bwt_data_len(len);
+	bwt->data = kom_malloc(uint64_t, bwt->data_len);
+
+#ifdef LIBSAIS_OPENMP
+	nt = n_thread;
+#else
+	nt = 1;
+#endif
+	n_used = nt; // real thread count; corrected to omp_get_num_threads() inside the region
+	delta_c = kom_malloc(uint64_t, (size_t)nt * 4);
+	start_c = kom_calloc(uint64_t, (size_t)(nt + 1) * 4); // start_c[0..3] must be zero for the prefix-scan base
+
+#ifdef LIBSAIS_OPENMP
+	#pragma omp parallel num_threads(nt)
+#endif
+	{
+#ifdef LIBSAIS_OPENMP
+		int tid = omp_get_thread_num();
+		int actual_nt = omp_get_num_threads();
+#else
+		int tid = 0, actual_nt = 1;
+#endif
+		int64_t blocks_per_t = (total_blocks + actual_nt - 1) / actual_nt;
+		int64_t b_first = (int64_t)tid * blocks_per_t;
+		int64_t b_last  = b_first + blocks_per_t;
+		if (b_first > total_blocks) b_first = total_blocks;
+		if (b_last  > total_blocks) b_last  = total_blocks;
+		int64_t out_start = b_first * 128;
+		int64_t out_end   = b_last  * 128;
+		if (out_end > len) out_end = len;
+		uint64_t local_c[4] = {0,0,0,0};
+		uint64_t local_x[4] = {0,0,0,0};
+		uint64_t *block_count_ptr = 0;
+		int64_t k_data = b_first * 8;
+
+		for (int64_t out = out_start; out < out_end; ++out) {
+			int64_t in = out + (out >= primary);
+			uint8_t b = a[in] & 3;
+			int pos = (int)(out & 0x7f);
+			if (pos == 0) {
+				if (out > out_start) memcpy(&bwt->data[k_data], local_x, 32), k_data += 4;
+				block_count_ptr = &bwt->data[k_data];
+				memcpy(&bwt->data[k_data], local_c, 32), k_data += 4;
+				memset(local_x, 0, 32);
+			} else if (pos == 64) {
+				for (int j = 0; j < 4; ++j)
+					block_count_ptr[j] |= (local_c[j] - block_count_ptr[j]) << BWT_CNT_SHIFT;
+			}
+			++local_c[b];
+			local_x[pos >> 5] |= (uint64_t)b << ((pos & 0x1f) << 1);
+		}
+
+		if (b_last > b_first) memcpy(&bwt->data[k_data], local_x, 32), k_data += 4;
+		assert(k_data == b_last * 8);
+		for (int j = 0; j < 4; ++j) delta_c[(size_t)tid * 4 + j] = local_c[j];
+
+#ifdef LIBSAIS_OPENMP
+		#pragma omp barrier
+		#pragma omp single
+#endif
+		{ // OpenMP may give fewer threads than requested; record the real count
+			n_used = actual_nt;
+			for (int t = 0; t < actual_nt; ++t)
+				for (int j = 0; j < 4; ++j)
+					start_c[(size_t)(t+1) * 4 + j] = start_c[(size_t)t * 4 + j] + delta_c[(size_t)t * 4 + j];
+		}
+
+		uint64_t add[4] = {
+			start_c[(size_t)tid * 4 + 0], start_c[(size_t)tid * 4 + 1],
+			start_c[(size_t)tid * 4 + 2], start_c[(size_t)tid * 4 + 3]
+		};
+		for (int64_t b = b_first; b < b_last; ++b) {
+			uint64_t *p = &bwt->data[b * 8];
+			for (int j = 0; j < 4; ++j) {
+				uint64_t low = p[j] & BWT_CNT_MASK, high = p[j] & ~BWT_CNT_MASK;
+				p[j] = ((low + add[j]) & BWT_CNT_MASK) | high;
+			}
+		}
+	}
+
+	memcpy(&bwt->data[total_blocks * 8], &start_c[(size_t)n_used * 4], 32);
+	bwt->L2[0] = 0;
+	for (int j = 0; j < 4; ++j)
+		bwt->L2[j+1] = bwt->L2[j] + start_c[(size_t)n_used * 4 + j];
+	assert(bwt->L2[4] == (uint64_t)len);
+	assert((uint64_t)(total_blocks * 8 + 4) == bwt->data_len);
+
+	free(delta_c);
+	free(start_c);
 	return bwt;
 }
 
