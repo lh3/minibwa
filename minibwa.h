@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define MB_VERSION "0.0-r285-dirty"
+#define MB_VERSION "0.0-r289-dirty"
 
 #define MB_F_SAM              (0x1LL)       // output in the SAM format
 #define MB_F_NO_UNMAP         (0x2LL)       // output unmapped query sequences

@@ -344,7 +344,7 @@ static const mb_hit_t *mb_matesw_core(void *km, const mb_opt_t *opt, const l2b_t
 
 static int32_t mb_matesw(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_t n_hit[2], mb_hit_t *hit[2], const mb_pestat_t pes[4], const mb_pairaux_t *paux0, int32_t qlen[2], char *const qseq[2])
 {
-	int32_t i, r, n_add, n_res, max = paux0->score, max2 = paux0->sub_sc;
+	int32_t i, r, n_add, n_res, max[2], max2[2], skip[2];
 	mb_hit_v ha[2];
 	ksw_extz_t ez;
 	mb128_t *a;
@@ -375,6 +375,7 @@ static int32_t mb_matesw(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_
 		}
 	}
 	radix_sort_mb128x(a, a + n_res);
+
 	// prepare sequences for alignment
 	qs[0][0] = Kcalloc(km, uint8_t, (qlen[0] + qlen[1]) * 2);
 	qs[0][1] = qs[0][0] + qlen[0];
@@ -389,21 +390,26 @@ static int32_t mb_matesw(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_
 			qs[r][1][qlen[r] - 1 - i] = c < 4? 3 - c : 4;
 		}
 	}
+
 	// do alignment
+	max[0] = paux0->score, max2[0] = paux0->sub_sc, skip[0] = 0;
+	max[1] = paux0->score, max2[1] = paux0->sub_sc, skip[1] = 0;
 	memset(&ez, 0, sizeof(ez));
 	ez.m_cigar = 16;
 	ez.cigar = Kmalloc(km, uint32_t, ez.m_cigar);
 	for (i = n_res - 1; i >= 0; --i) {
 		int32_t sc, r = a[i].y&1, j = a[i].y>>1;
 		const mb_hit_t *h0 = &ha[r].a[j], *h1;
+		if (skip[r]) continue;
 		h1 = mb_matesw_core(km, opt, l2b, pes, h0, r, qlen[!r], qs[!r], &ha[!r], &ez);
 		if (h1) { // rescue successful
 			sc = mb_pair_score(h0, h1, pes, opt->a);
-			if (sc > max) max2 = max, max = sc;
-			else if (sc > max2) max2 = sc;
-			if (max == max2) break;
+			if (sc > max[r]) max2[r] = max[r], max[r] = sc;
+			else if (sc > max2[r]) max2[r] = sc;
+			if (max[r] == max2[r]) skip[r] = 1;
 		}
 	}
+
 	kfree(km, ez.cigar);
 	kfree(km, qs[0][0]);
 	kfree(km, a);
