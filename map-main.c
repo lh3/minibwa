@@ -61,7 +61,7 @@ static void worker_for_se_batch(void *data, long i, int tid)
 		}
 	}
 	assert(p == n);
-	mb_seed_intv_batch(km, idx->bwt, n, len, seq, opt->min_len, opt->max_sub_occ, sai);
+	mb_seed_intv_batch(km, idx->bwt, n, len, seq, opt->min_len, opt->max_sub_occ, opt->min_sub_occ, sai);
 	for (k = p = 0; k < s->sb_cnt[i]; ++k) {
 		int32_t off = s->seg_off[s->sb_off[i] + k];
 		int32_t cnt = s->seg_cnt[s->sb_off[i] + k];
@@ -294,6 +294,8 @@ static ko_longopt_t long_options[] = {
 	{ "long",         ko_optional_argument, 307 },
 	{ "adap",         ko_required_argument, 308 },
 	{ "chain-only",   ko_no_argument,       309 },
+	{ "max-sub-occ",  ko_required_argument, 310 }, // ablation: 0 disables Pass-2 sub-SMEM reseeding
+	{ "min-sub-occ",  ko_required_argument, 311 }, // ablation: skip Pass-2 for SMEMs with SA-interval size < N (default 1)
 	{ "dbg-aln-seq",  ko_no_argument,       601 },
 	{ "dbg-anchor",   ko_no_argument,       602 },
 	{ "dbg-seed",     ko_no_argument,       603 },
@@ -329,6 +331,8 @@ static int usage(FILE *fp, const mb_opt_t *opt)
 	fprintf(fp, "    -p FLOAT         min secondary-to-primary score ratio [%g]\n", opt->pri_ratio);
 	fprintf(fp, "    -N INT           retain at most INT secondary alignments [%d]\n", opt->best_n);
 	fprintf(fp, "    --chain-only     perform chaining only without base alignment\n");
+	fprintf(fp, "    --max-sub-occ=INT  reseed Pass-2 sub-SMEMs only when SA-interval size <= INT (0 disables Pass-2) [%d]\n", opt->max_sub_occ);
+	fprintf(fp, "    --min-sub-occ=INT  skip Pass-2 reseeding when SA-interval size < INT [%d]\n", opt->min_sub_occ);
 	fprintf(fp, "    -x STR           preset (sr, lr or adap for mixed short/long reads) [adap]\n");
 	fprintf(fp, "  Alignment:\n");
 	fprintf(fp, "    -A INT           matching score [%d]\n", opt->a);
@@ -446,6 +450,10 @@ int main_map(int argc, char *argv[])
 			yes_or_no(&mo, MB_F_ADAP, o.longidx, o.arg, 1);
 		} else if (c == 309) { // --chain-only
 			mo.flag |= MB_F_NO_ALN;
+		} else if (c == 310) { // --max-sub-occ
+			mo.max_sub_occ = atoi(o.arg);
+		} else if (c == 311) { // --min-sub-occ
+			mo.min_sub_occ = atoi(o.arg);
 		} else if (c == 601) { // --dbg-aln-seq
 			kom_dbg_flag |= MB_DBG_ALN_SEQ;
 		} else if (c == 602) { // --dbg-anchor

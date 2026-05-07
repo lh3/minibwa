@@ -640,7 +640,7 @@ mb_hit_t *mb_map(const mb_opt_t *opt, const mb_idx_t *idx, int32_t qlen, const c
 	seq = Kmalloc(b->km, uint8_t, qlen);
 	for (i = 0; i < qlen; ++i)
 		seq[i] = kom_nt4_table[(uint8_t)seq0[i]];
-	mb_seed_intv(b->km, idx->bwt, qlen, seq, opt->min_len, opt->max_sub_occ, &u);
+	mb_seed_intv(b->km, idx->bwt, qlen, seq, opt->min_len, opt->max_sub_occ, opt->min_sub_occ, &u);
 	ret = mb_map_sai(&opt_adap, idx, qlen, seq, &u, n_hit_, b, qname);
 	kfree(b->km, seq);
 	if (b0 == 0) mb_tbuf_destroy(b);
@@ -682,7 +682,7 @@ mb_hit_t **mb_map_batch(const mb_opt_t *opt, const mb_idx_t *idx, int32_t n_seq,
 
 			// batch SMEM for sub-batch
 			memset(sai, 0, sb_n * sizeof(mb_sai_v));
-			mb_seed_intv_batch(km, idx->bwt, sb_n, &qlen[sb_st], seq4, opt->min_len, opt->max_sub_occ, sai);
+			mb_seed_intv_batch(km, idx->bwt, sb_n, &qlen[sb_st], seq4, opt->min_len, opt->max_sub_occ, opt->min_sub_occ, sai);
 
 			// map each sequence in sub-batch
 			for (k = 0; k < sb_n; ++k) {

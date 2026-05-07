@@ -40,7 +40,8 @@ typedef struct {
 	uint64_t flag;
 	// seeding options
 	int32_t min_len; // min seed length
-	int32_t max_sub_occ; // look for shorter seed if smem occ below this value
+	int32_t max_sub_occ; // run Pass-2 sub-SMEM reseeding only when SA-interval size <= this value (0 disables Pass-2)
+	int32_t min_sub_occ; // run Pass-2 sub-SMEM reseeding only when SA-interval size >= this value (default 1 = no lower gate)
 	int32_t max_occ; // max interval occurrence
 	// general algorithm options
 	int32_t bw, bw_long; // bandwidth
