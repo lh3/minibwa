@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <math.h>
 #include "mbpriv.h"
+#include "meth.h"
 #include "kalloc.h"
 #include "ksw2.h"
 
@@ -65,7 +66,7 @@ static int32_t mb_hit_sum_score(void *km, int32_t n_hit, const mb_hit_t *hit)
 	return sc;
 }
 
-void mb_pestat(void *km, const mb_opt_t *opt, int32_t n_frag, const int32_t *seg_off, const int32_t *seg_cnt, const int32_t *n_hit, mb_hit_t *const *hit, mb_pestat_t pes[4])
+void mb_pestat(void *km, const mb_opt_t *opt, const mb_meth_cmap_t *cmap, int32_t n_frag, const int32_t *seg_off, const int32_t *seg_cnt, const int32_t *n_hit, mb_hit_t *const *hit, mb_pestat_t pes[4])
 {
 	const int MIN_DIR_CNT = 20;
 	const double MIN_DIR_RATIO = 0.05, OUTLIER_BOUND = 2.0, MAPPING_BOUND = 3.0, MAX_STDDEV = 4.0;
@@ -82,7 +83,8 @@ void mb_pestat(void *km, const mb_opt_t *opt, int32_t n_frag, const int32_t *seg
 		r[0] = mb_select_unique_se(n_hit[off + 0], hit[off + 0]);
 		r[1] = mb_select_unique_se(n_hit[off + 1], hit[off + 1]);
 		if (r[0] == 0 || r[1] == 0) continue;
-		if (r[0]->tid != r[1]->tid) continue; // not on the same contig
+		// under --meth, f<X>/r<X> partner contigs share a logical coordinate space
+		if (mb_meth_canon_tid(cmap, r[0]->tid) != mb_meth_canon_tid(cmap, r[1]->tid)) continue;
 		dir = mb_insert_dir(r[0], r[1], &dist);
 		if (dist < opt->max_pe_ins) {
 			if (is[dir].n == is[dir].m)
@@ -137,7 +139,7 @@ typedef struct {
 	int32_t i[2];
 } mb_pairaux_t;
 
-static void mb_pair_hits(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_t n_hit[2], mb_hit_t *hit[2], const mb_pestat_t pes[4], mb_pairaux_t *ret)
+static void mb_pair_hits(void *km, const mb_opt_t *opt, const l2b_t *l2b, const mb_meth_cmap_t *cmap, int32_t n_hit[2], mb_hit_t *hit[2], const mb_pestat_t pes[4], mb_pairaux_t *ret)
 {
 	int32_t r, i, k, n_pa, y[4], n_pp = 0, m_pp = 0;
 	mb128_t *pa, *pp = 0; // pp: proper pairs
@@ -150,7 +152,7 @@ static void mb_pair_hits(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_
 			mb128_t *p = &pa[n_pa++];
 			mb_hit_t *h = &hit[r][i];
 			h->proper_pair = 0;
-			p->x = l2b->ctg[h->tid].off + (h->rev? h->te : h->ts);
+			p->x = l2b->ctg[mb_meth_canon_tid(cmap, h->tid)].off + (h->rev? h->te : h->ts);
 			p->y = (uint64_t)i << 2 | (uint64_t)h->rev << 1 | r;
 		}
 	}
@@ -160,6 +162,7 @@ static void mb_pair_hits(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_
 	for (i = 0; i < n_pa; ++i) {
 		mb128_t *pi = &pa[i];
 		mb_hit_t *hi = &hit[pi->y&1][pi->y>>2];
+		int32_t i_canon = mb_meth_canon_tid(cmap, hi->tid); // hoisted: invariant across the inner k-loop
 		for (r = 0; r < 2; ++r) {
 			int which, dir = r << 1 | (pi->y>>1&1);
 			if (pes[dir].failed) continue; // invalid orientation
@@ -171,7 +174,7 @@ static void mb_pair_hits(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_
 				int64_t dist;
 				double s;
 				if ((pk->y&3) != which) continue;
-				if (hi->tid != hk->tid) break;
+				if (i_canon != mb_meth_canon_tid(cmap, hk->tid)) break;
 				dist = pi->x - pk->x;
 				if (dist > pes[dir].hi) break;
 				if (dist < pes[dir].lo) continue;
@@ -311,12 +314,23 @@ typedef struct {
 	mb_hit_t *a;
 } mb_hit_v;
 
-static const mb_hit_t *mb_matesw_core(void *km, const mb_opt_t *opt, const l2b_t *l2b, const mb_pestat_t pes[4], const mb_hit_t *h0, int32_t r0,
+static const mb_hit_t *mb_matesw_core(void *km, const mb_opt_t *opt, const l2b_t *l2b, const mb_meth_cmap_t *cmap, const mb_pestat_t pes[4], const mb_hit_t *h0, int32_t r0,
 	int32_t len, uint8_t *seq[2], mb_hit_v *h1, int32_t min_sc, ksw_extz_t *ez)
 {
 	int32_t dir, skip[4];
 	int64_t pos5;
 	const mb_hit_t *ret = 0;
+	/* cmap is threaded through but not used for target-contig switching here. An
+	 * earlier draft redirected the rescue window to the f/r partner contig under
+	 * --meth (rescue R2-on-f<X> against r<X> on the assumption of a directional
+	 * library). That broke non-directional libraries (twist-emseq real, encode WGBS,
+	 * holodeck non-directional sims) where R2's correct rescue target is the SAME
+	 * doubled contig as h0. The cross-contig pairing logic in mb_pair_hits is enough
+	 * to recover the directional case via primary placements; mate rescue stays
+	 * single-contig as in pre-cross-contig minibwa. A try-both rescue (same and
+	 * partner, take the better score) is reasonable future work. */
+	int32_t target_tid = h0->tid;
+	(void)cmap; /* silence unused warning if helpers above optimise out */
 	// find permitted orientation
 	for (dir = 0; dir < 4; ++dir) skip[dir] = !!pes[dir].failed;
 	if (skip[0] + skip[1] + skip[2] + skip[3] == 4) return 0; // no need to perform SW
@@ -332,7 +346,7 @@ static const mb_hit_t *mb_matesw_core(void *km, const mb_opt_t *opt, const l2b_t
 		ts = (is_larger? pos5 + pes[dir].lo : pos5 - pes[dir].hi) - (!is_rev? 0 : len);
 		te = (is_larger? pos5 + pes[dir].hi : pos5 - pes[dir].lo) + (!is_rev? len : 0);
 		if (ts < 0) ts = 0;
-		if (te > l2b->ctg[h0->tid].len) te = l2b->ctg[h0->tid].len;
+		if (te > l2b->ctg[target_tid].len) te = l2b->ctg[target_tid].len;
 		if (te - ts > len) {
 			int64_t ts2 = ts, te2 = te;
 			int32_t max_ug, max_i, n_good, n_kmer;
@@ -340,7 +354,7 @@ static const mb_hit_t *mb_matesw_core(void *km, const mb_opt_t *opt, const l2b_t
 			mb_hit_t ht;
 			ht.p = 0;
 			ref = Kmalloc(km, uint8_t, te - ts);
-			l2b_getseq(l2b, h0->tid, ts, te, ref);
+			l2b_getseq(l2b, target_tid, ts, te, ref);
 			max_ug = mb_ungap(km, len, seq[is_rev], te - ts, ref, 7, &max_i, &n_good, &n_kmer);
 			if (max_ug >= 10 && max_ug >= len>>1 && n_good == 1) {
 				ts2 = ts + max_i - len / 2;
@@ -357,7 +371,7 @@ static const mb_hit_t *mb_matesw_core(void *km, const mb_opt_t *opt, const l2b_t
 			if ((opt->flag & MB_F_METH) || max_ug >= 10 || max_ug >= n_kmer * 0.33)
 				mb_matesw_align(km, opt, len, seq[is_rev], te2 - ts2, &ref[ts2 - ts], &ht, min_sc, ez);
 			if (ht.p) { // a good hit found
-				ht.tid = h0->tid;
+				ht.tid = target_tid;
 				ht.ts += ts2, ht.te += ts2;
 				ht.rev = is_rev;
 				if (is_rev) {
@@ -376,7 +390,7 @@ static const mb_hit_t *mb_matesw_core(void *km, const mb_opt_t *opt, const l2b_t
 	return ret;
 }
 
-static int32_t mb_matesw(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_t n_hit[2], mb_hit_t *hit[2], const mb_pestat_t pes[4], const mb_pairaux_t *paux0, int32_t qlen[2], char *const qseq[2])
+static int32_t mb_matesw(void *km, const mb_opt_t *opt, const l2b_t *l2b, const mb_meth_cmap_t *cmap, int32_t n_hit[2], mb_hit_t *hit[2], const mb_pestat_t pes[4], const mb_pairaux_t *paux0, int32_t qlen[2], char *const qseq[2])
 {
 	int32_t i, r, n_add, n_res, max[2], max2[2], skip[2], min_sc[2];
 	mb_hit_v ha[2];
@@ -437,7 +451,7 @@ static int32_t mb_matesw(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_
 		int32_t sc, r = a[i].y&1, j = a[i].y>>1;
 		const mb_hit_t *h0 = &ha[r].a[j], *h1;
 		if (skip[r]) continue;
-		h1 = mb_matesw_core(km, opt, l2b, pes, h0, r, qlen[!r], qs[!r], &ha[!r], min_sc[!r], &ez);
+		h1 = mb_matesw_core(km, opt, l2b, cmap, pes, h0, r, qlen[!r], qs[!r], &ha[!r], min_sc[!r], &ez);
 		if (h1) { // rescue successful
 			sc = mb_pair_score(h0, h1, pes, opt->a);
 			if (sc > max[r]) max2[r] = max[r], max[r] = sc;
@@ -455,17 +469,17 @@ static int32_t mb_matesw(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_
 	return n_add;
 }
 
-void mb_pair(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_t n_hit[2], mb_hit_t *hit[2], const mb_pestat_t pes[4], int32_t qlen[2], char *const qseq[2])
+void mb_pair(void *km, const mb_opt_t *opt, const l2b_t *l2b, const mb_meth_cmap_t *cmap, int32_t n_hit[2], mb_hit_t *hit[2], const mb_pestat_t pes[4], int32_t qlen[2], char *const qseq[2])
 {
 	int32_t r, i, score_se, do_matesw;
 	mb_pairaux_t paux;
 	mb_hit_t *h[2];
 
-	mb_pair_hits(km, opt, l2b, n_hit, hit, pes, &paux);
+	mb_pair_hits(km, opt, l2b, cmap, n_hit, hit, pes, &paux);
 	do_matesw = paux.n_pp > 0 && paux.score == paux.sub_sc? 0 : 1; // skip mate rescue if we see two equally best pairs
 	if (do_matesw && opt->max_rescue > 0) {
 		int32_t sub_diff = opt->a + opt->b > opt->q + opt->e? opt->a + opt->b : opt->q + opt->e;
-		if (mb_matesw(km, opt, l2b, n_hit, hit, pes, &paux, qlen, qseq) > 0) {
+		if (mb_matesw(km, opt, l2b, cmap, n_hit, hit, pes, &paux, qlen, qseq) > 0) {
 			for (r = 0; r < 2; ++r) {
 				for (i = 0; i < n_hit[r]; ++i) {
 					mb_hit_t *h = &hit[r][i];
@@ -476,7 +490,7 @@ void mb_pair(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_t n_hit[2], 
 				mb_set_parent(km, opt->mask_level, opt->mask_len, n_hit[r], hit[r], sub_diff, 0);
 				mb_set_mapq(km, qlen[r], n_hit[r], hit[r], opt->min_chain_score, opt->a, mb_is_sr_mode(opt, qlen[r]), opt->max_sr_len);
 			}
-			mb_pair_hits(km, opt, l2b, n_hit, hit, pes, &paux); // pair again if new hits rescued
+			mb_pair_hits(km, opt, l2b, cmap, n_hit, hit, pes, &paux); // pair again if new hits rescued
 		}
 	}
 	if (paux.n_pp == 0) goto end_pairing;

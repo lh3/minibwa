@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <math.h>
 #include "mbpriv.h"
+#include "meth.h"
 #include "kalloc.h"
 #include "kommon.h"
 #include "ksort.h"
@@ -705,6 +706,8 @@ mb_hit_t **mb_map_batch(const mb_opt_t *opt, const mb_idx_t *idx, int32_t n_seq,
 	// paired-end processing
 	if (is_pe && n_seq >= 2) {
 		mb_pestat_t pes[4];
+		/* Build cmap on demand for --meth so batch-API callers get cross-contig pairing/rescue. */
+		mb_meth_cmap_t *cmap_local = (opt->flag & MB_F_METH)? mb_meth_cmap_build(idx->l2b) : 0;
 		for (i = 0; i < 4; ++i) pes[i].failed = 1;
 		pes[1].failed = 0;
 		pes[1].avg = opt->pe_avg, pes[1].std = opt->pe_std;
@@ -712,8 +715,9 @@ mb_hit_t **mb_map_batch(const mb_opt_t *opt, const mb_idx_t *idx, int32_t n_seq,
 		for (i = 0; i + 1 < n_seq; i += 2) {
 			int32_t len2[2] = { qlen[i], qlen[i+1] };
 			char *seq2[2] = { (char*)seq[i], (char*)seq[i+1] };
-			mb_pair(km, opt, idx->l2b, &n_hit[i], &hit[i], pes, len2, seq2);
+			mb_pair(km, opt, idx->l2b, cmap_local, &n_hit[i], &hit[i], pes, len2, seq2);
 		}
+		mb_meth_cmap_free(cmap_local);
 	}
 
 	if (b0 == 0) mb_tbuf_destroy(b);

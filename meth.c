@@ -8,11 +8,16 @@
 #include "meth.h"
 
 /* Strip leading 'f'/'r' c2t prefix; collapse paired f<x>/r<x> contigs onto a
- * single output name; non-prefixed contigs pass through with direction 0. */
+ * single output name; non-prefixed contigs pass through with direction 0.
+ * canon_tid (lowest internal tid sharing out_tid) and paired_tid (the partner
+ * internal tid, or -1) are populated in the same pass via the existing
+ * out_tid lookup; once 3+ internal tids share an out_tid, all paired_tid
+ * entries for that group are pinned to -1 (ambiguous; no cross-contig rescue). */
 mb_meth_cmap_t *mb_meth_cmap_build(const l2b_t *l2b)
 {
 	mb_meth_cmap_t *m;
 	int i, j;
+	int *first_idx, *poisoned;
 
 	if (l2b == 0) return 0;
 	m = kom_calloc(mb_meth_cmap_t, 1);
@@ -20,9 +25,14 @@ mb_meth_cmap_t *mb_meth_cmap_build(const l2b_t *l2b)
 	if (m->n_internal > 0) {
 		m->out_tid      = kom_calloc(int,     m->n_internal);
 		m->direction    = kom_calloc(char,    m->n_internal);
+		m->canon_tid    = kom_calloc(int,     m->n_internal);
+		m->paired_tid   = kom_calloc(int,     m->n_internal);
 		m->output_names = kom_calloc(char *,  m->n_internal);
 		m->output_lens  = kom_calloc(int64_t, m->n_internal);
 	}
+	/* first_idx[out_tid] = the first internal tid that landed on that out_tid; valid until poisoned[out_tid] is set */
+	first_idx = kom_calloc(int, m->n_internal);
+	poisoned  = kom_calloc(int, m->n_internal);
 	for (i = 0; i < m->n_internal; ++i) {
 		const char *name = l2b->ctg[i].name;
 		const char *stripped = (name[0] == 'f' || name[0] == 'r')? name + 1 : name;
@@ -30,15 +40,41 @@ mb_meth_cmap_t *mb_meth_cmap_build(const l2b_t *l2b)
 		m->direction[i] = (name[0] == 'f' || name[0] == 'r')? name[0] : 0;
 		for (j = 0; j < m->n_output; ++j)
 			if (strcmp(m->output_names[j], stripped) == 0) { existing = j; break; }
-		if (existing >= 0) m->out_tid[i] = existing;
-		else {
+		if (existing >= 0) {
+			int prev = first_idx[existing];
+			m->out_tid[i]    = existing;
+			m->canon_tid[i]  = m->canon_tid[prev]; /* inherit canon from the partner already placed */
+			if (poisoned[existing] || m->paired_tid[prev] >= 0) {
+				/* 3rd-or-later collision: invalidate the whole group's partner links and pin */
+				if (!poisoned[existing] && m->paired_tid[prev] >= 0)
+					m->paired_tid[m->paired_tid[prev]] = -1;
+				m->paired_tid[prev] = -1;
+				m->paired_tid[i]    = -1;
+				poisoned[existing]  = 1;
+			} else if (l2b->ctg[i].len != l2b->ctg[prev].len) {
+				fprintf(stderr, "[WARNING]\033[1;31m --meth f/r partners '%s' and '%s' differ in length (%lld vs %lld); skipping cross-contig pairing for this group.\033[0m\n",
+				        l2b->ctg[prev].name, l2b->ctg[i].name,
+				        (long long)l2b->ctg[prev].len, (long long)l2b->ctg[i].len);
+				m->paired_tid[i]    = -1;
+				m->paired_tid[prev] = -1;
+				poisoned[existing]  = 1;
+			} else {
+				m->paired_tid[prev] = i;
+				m->paired_tid[i]    = prev;
+			}
+		} else {
 			int idx = m->n_output;
 			m->output_names[idx] = kom_strdup(stripped);
-			m->output_lens[idx] = (int64_t)l2b->ctg[i].len;
-			m->out_tid[i] = idx;
+			m->output_lens[idx]  = (int64_t)l2b->ctg[i].len;
+			m->out_tid[i]    = idx;
+			m->canon_tid[i]  = i;
+			m->paired_tid[i] = -1;
+			first_idx[idx]   = i;
 			++m->n_output;
 		}
 	}
+	free(first_idx);
+	free(poisoned);
 	return m;
 }
 
@@ -48,6 +84,8 @@ void mb_meth_cmap_free(mb_meth_cmap_t *m)
 	if (m == 0) return;
 	free(m->out_tid);
 	free(m->direction);
+	free(m->canon_tid);
+	free(m->paired_tid);
 	if (m->output_names) {
 		for (i = 0; i < m->n_output; ++i) free(m->output_names[i]);
 		free(m->output_names);

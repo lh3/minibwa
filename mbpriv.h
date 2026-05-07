@@ -97,8 +97,8 @@ void mb_append_cigar(mb_hit_t *r, uint32_t n_cigar, const uint32_t *cigar);
 void mb_update_extra(void *km, mb_hit_t *r, const uint8_t *qseq, const uint8_t *tseq, const int8_t *mat, int8_t q, int8_t e, uint64_t opt_flag, int log_gap);
 
 // defined in pe.c
-void mb_pestat(void *km, const mb_opt_t *opt, int32_t n_seg, const int32_t *seg_off, const int32_t *seg_cnt, const int32_t *n_hit, mb_hit_t *const *hit, mb_pestat_t pes[4]);
-void mb_pair(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_t n_hit[2], mb_hit_t *hit[2], const mb_pestat_t pes[4], int32_t qlen[2], char *const qseq[2]);
+void mb_pestat(void *km, const mb_opt_t *opt, const mb_meth_cmap_t *cmap, int32_t n_seg, const int32_t *seg_off, const int32_t *seg_cnt, const int32_t *n_hit, mb_hit_t *const *hit, mb_pestat_t pes[4]);
+void mb_pair(void *km, const mb_opt_t *opt, const l2b_t *l2b, const mb_meth_cmap_t *cmap, int32_t n_hit[2], mb_hit_t *hit[2], const mb_pestat_t pes[4], int32_t qlen[2], char *const qseq[2]);
 
 // Fast log2 approximation (from minimap2)
 static inline float mb_log2(float x) // NB: this doesn't work when x<2

@@ -93,7 +93,7 @@ static void worker_for_pe(void *data, long i, int tid)
 		seq[r] = s->seq[off + r].seq;
 		len[r] = s->seq[off + r].l_seq;
 	}
-	mb_pair(mb_tbuf_km(b), s->p->opt, s->p->idx->l2b, &s->n_hit[off], &s->hit[off], s->pes, len, seq);
+	mb_pair(mb_tbuf_km(b), s->p->opt, s->p->idx->l2b, s->p->cmap, &s->n_hit[off], &s->hit[off], s->pes, len, seq);
 }
 
 static void *worker_pipeline(void *shared, int step, void *in)
@@ -174,7 +174,7 @@ static void *worker_pipeline(void *shared, int step, void *in)
 			} else { // estimate PE stats from data
 				void *km;
 				km = opt->flag & MB_F_NO_KALLOC? 0 : km_init();
-				mb_pestat(km, opt, s->n_frag, s->seg_off, s->seg_cnt, s->n_hit, s->hit, s->pes);
+				mb_pestat(km, opt, s->p->cmap, s->n_frag, s->seg_off, s->seg_cnt, s->n_hit, s->hit, s->pes);
 				if (km) km_destroy(km);
 			}
 			kt_for(opt->n_thread, worker_for_pe, in, s->n_frag);
@@ -295,7 +295,7 @@ static ko_longopt_t long_options[] = {
 	{ "adap",         ko_required_argument, 308 },
 	{ "chain-only",   ko_no_argument,       309 },
 	{ "max-sub-occ",  ko_required_argument, 310 }, // ablation: 0 disables Pass-2 sub-SMEM reseeding
-	{ "min-sub-occ",  ko_required_argument, 311 }, // ablation: skip Pass-2 for SMEMs with SA-interval size < N (default 1)
+	{ "min-sub-occ", ko_required_argument, 311 }, // ablation: skip Pass-2 for SMEMs with size < N (default 1)
 	{ "dbg-aln-seq",  ko_no_argument,       601 },
 	{ "dbg-anchor",   ko_no_argument,       602 },
 	{ "dbg-seed",     ko_no_argument,       603 },
@@ -452,7 +452,7 @@ int main_map(int argc, char *argv[])
 			mo.flag |= MB_F_NO_ALN;
 		} else if (c == 310) { // --max-sub-occ
 			mo.max_sub_occ = atoi(o.arg);
-		} else if (c == 311) { // --min-sub-occ
+		} else if (c == 311) { // --min-sub-size
 			mo.min_sub_occ = atoi(o.arg);
 		} else if (c == 601) { // --dbg-aln-seq
 			kom_dbg_flag |= MB_DBG_ALN_SEQ;
