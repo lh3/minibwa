@@ -548,7 +548,7 @@ static void mb_dbg_anchor(const mb_idx_t *idx, int qlen, int64_t n, const mb_anc
 	}
 }
 
-mb_hit_t *mb_map_sai(const mb_opt_t *opt, const mb_idx_t *idx, int64_t qlen, const uint8_t *seq, mb_sai_v *u, int32_t *n_hit_, mb_tbuf_t *b, const char *qname)
+mb_hit_t *mb_map_sai(const mb_opt_t *opt, const mb_idx_t *idx, int64_t qlen, const uint8_t *seq, l2b_meth_t mt, mb_sai_v *u, int32_t *n_hit_, mb_tbuf_t *b, const char *qname)
 {
 	const int32_t min_rechain_len = 1000;
 	const double min_rechain_ratio = 0.1;
@@ -577,7 +577,7 @@ mb_hit_t *mb_map_sai(const mb_opt_t *opt, const mb_idx_t *idx, int64_t qlen, con
 	// collect anchors
 	chn_pen_gap = opt->chain_gap_scale * .01 * opt->min_len;
 	if (kom_dbg_flag & MB_DBG_SEED) mb_dbg_seed(u->n, u->a, qname);
-	mb_anchor(b->km, idx, u, qlen, L2B_METH_NONE, opt->max_occ, &v);
+	mb_anchor(b->km, idx, u, qlen, mt, opt->max_occ, &v);
 	kfree(b->km, u->a); // no longer needed
 	u->n = 0, u->a = 0;
 
@@ -646,7 +646,7 @@ mb_hit_t *mb_map(const mb_opt_t *opt, const mb_idx_t *idx, int32_t qlen, const c
 	for (i = 0; i < qlen; ++i)
 		seq[i] = kom_nt4_table[(uint8_t)seq0[i]];
 	mb_seed_intv(b->km, idx->bwt, qlen, seq, opt->min_len, opt->max_sub_occ, &u);
-	ret = mb_map_sai(&opt_adap, idx, qlen, seq, &u, n_hit_, b, qname);
+	ret = mb_map_sai(&opt_adap, idx, qlen, seq, L2B_METH_NONE, &u, n_hit_, b, qname);
 	kfree(b->km, seq);
 	if (b0 == 0) mb_tbuf_destroy(b);
 	return ret;
@@ -694,7 +694,7 @@ mb_hit_t **mb_map_batch(const mb_opt_t *opt, const mb_idx_t *idx, int32_t n_seq,
 				int32_t idx_k = sb_st + k;
 				mb_opt_t opt_adap;
 				mb_opt_adap(opt, qlen[idx_k], &opt_adap);
-				hit[idx_k] = mb_map_sai(&opt_adap, idx, qlen[idx_k], seq4[k], &sai[k], &n_hit[idx_k], b, qname? qname[idx_k] : 0);
+				hit[idx_k] = mb_map_sai(&opt_adap, idx, qlen[idx_k], seq4[k], L2B_METH_NONE, &sai[k], &n_hit[idx_k], b, qname? qname[idx_k] : 0);
 				kfree(km, seq4[k]);
 			}
 

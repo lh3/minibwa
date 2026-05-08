@@ -65,7 +65,7 @@ static void worker_for_se_batch(void *data, long i, int tid)
 				seq[p][l] = kom_nt4_table[(uint8_t)t->seq[l]];
 			if (idx->is_meth) {
 				assert(cnt == 2);
-				if (j == 0) { // R1: C->T
+				if ((j&1) == 0) { // R1: C->T
 					for (l = 0; l < t->l_seq; ++l)
 						if (seq[p][l] == 1) seq[p][l] = 3;
 				} else { // R2: G->A
@@ -84,8 +84,9 @@ static void worker_for_se_batch(void *data, long i, int tid)
 		for (j = 0; j < cnt; ++j) {
 			const mb_bseq1_t *t = &s->seq[off + j];
 			mb_opt_t opt_adap;
+			l2b_meth_t mt = !idx->is_meth? L2B_METH_NONE : (j&1) == 0? L2B_METH_C2T : L2B_METH_G2A;
 			mb_opt_adap(opt, len[p], &opt_adap);
-			s->hit[off+j] = mb_map_sai(&opt_adap, idx, len[p], seq[p], &sai[p], &s->n_hit[off+j], b, t->name);
+			s->hit[off+j] = mb_map_sai(&opt_adap, idx, len[p], seq[p], mt, &sai[p], &s->n_hit[off+j], b, t->name);
 			++p;
 		}
 	}
@@ -376,7 +377,7 @@ static inline void yes_or_no(mb_opt_t *opt, uint64_t flag, int long_idx, const c
 int main_map(int argc, char *argv[])
 {
 	const char *opt_str = "x:o:k:c:m:p:A:B:b:O:E:t:K:N:PyYR:aul:w:W:g:5s:";
-	int32_t c, is_meth = 0;
+	int32_t c;
 	mb_idx_t *idx;
 	mb_opt_t mo;
 	char *fn_out = 0, *rg_line = 0, *s;
@@ -440,7 +441,7 @@ int main_map(int argc, char *argv[])
 		} else if (c == 309) { // --chain-only
 			mo.flag |= MB_F_NO_ALN;
 		} else if (c == 310) { // --meth
-			mo.flag |= MB_F_METH, is_meth = 1;
+			mo.flag |= MB_F_METH;
 		} else if (c == 601) { // --dbg-aln-seq
 			kom_dbg_flag |= MB_DBG_ALN_SEQ;
 		} else if (c == 602) { // --dbg-anchor
@@ -483,7 +484,7 @@ int main_map(int argc, char *argv[])
 	if (argc - o.ind < 2)
 		return usage(stderr, &mo);
 
-	idx = mb_idx_load(argv[o.ind], is_meth);
+	idx = mb_idx_load(argv[o.ind], !!(mo.flag & MB_F_METH));
 	kom_assert(idx, "failed to load the index.");
 	if (kom_verbose >= 3)
 		fprintf(stderr, "[M::%s::%.3f*%.2f] index loaded\n", __func__, kom_realtime(), kom_percent_cpu());
