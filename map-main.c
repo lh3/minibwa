@@ -63,6 +63,16 @@ static void worker_for_se_batch(void *data, long i, int tid)
 			seq[p] = &buf[tot], tot += t->l_seq;
 			for (l = 0; l < t->l_seq; ++l)
 				seq[p][l] = kom_nt4_table[(uint8_t)t->seq[l]];
+			if (idx->is_meth) {
+				assert(cnt == 2);
+				if (j == 0) { // R1: C->T
+					for (l = 0; l < t->l_seq; ++l)
+						if (seq[p][l] == 1) seq[p][l] = 3;
+				} else { // R2: G->A
+					for (l = 0; l < t->l_seq; ++l)
+						if (seq[p][l] == 2) seq[p][l] = 0;
+				}
+			}
 			++p;
 		}
 	}
@@ -430,7 +440,7 @@ int main_map(int argc, char *argv[])
 		} else if (c == 309) { // --chain-only
 			mo.flag |= MB_F_NO_ALN;
 		} else if (c == 310) { // --meth
-			is_meth = 1;
+			mo.flag |= MB_F_METH, is_meth = 1;
 		} else if (c == 601) { // --dbg-aln-seq
 			kom_dbg_flag |= MB_DBG_ALN_SEQ;
 		} else if (c == 602) { // --dbg-anchor
