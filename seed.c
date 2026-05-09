@@ -21,7 +21,7 @@ KRADIX_SORT_INIT(mb_anchor, mb_anchor_t, key_anchor, 8)
  * Seeding *
  ***********/
 
-void mb_seed_intv(void *km, const mb_bwt_t *bwt, int32_t len, const uint8_t *seq, int32_t min_len, int32_t max_sub_occ, mb_sai_v *v)
+void mb_seed_intv(void *km, const mb_bwt_t *bwt, int32_t len, const uint8_t *seq, int32_t min_len, int32_t max_sub_occ, int32_t min_sub_occ, mb_sai_v *v)
 {
 	int64_t x = 0, i, n_a0;
 	mb_sai_t p;
@@ -39,7 +39,7 @@ void mb_seed_intv(void *km, const mb_bwt_t *bwt, int32_t len, const uint8_t *seq
 	for (i = 0; i < n_a0; ++i) { // pass 2: sub-SMEMs
 		int32_t sub_min_len;
 		uint32_t st = v->a[i].info>>32, en = (uint32_t)v->a[i].info;
-		if (en - st < min_len * 2 || v->a[i].size > max_sub_occ)
+		if (en - st < min_len * 2 || v->a[i].size > max_sub_occ || v->a[i].size < min_sub_occ)
 			continue;
 		x = st;
 		sub_min_len = (en - st) / 2 > min_len? (en - st) / 2 : min_len;
@@ -53,7 +53,7 @@ void mb_seed_intv(void *km, const mb_bwt_t *bwt, int32_t len, const uint8_t *seq
 	}
 }
 
-void mb_seed_intv_batch(void *km, const mb_bwt_t *bwt, int32_t n_seq, const int32_t *len, uint8_t *const* seq, int32_t min_len, int32_t max_sub_occ, mb_sai_v *v)
+void mb_seed_intv_batch(void *km, const mb_bwt_t *bwt, int32_t n_seq, const int32_t *len, uint8_t *const* seq, int32_t min_len, int32_t max_sub_occ, int32_t min_sub_occ, mb_sai_v *v)
 { // identical to mb_seed_intv() though the order of intervals is often different
 	const int max_batch_size = 50;
 	mb_smem_entry_t *s;
@@ -82,7 +82,7 @@ void mb_seed_intv_batch(void *km, const mb_bwt_t *bwt, int32_t n_seq, const int3
 		for (j = 0; j < nv[i]; ++j) {
 			mb_smem_entry_t *t;
 			uint32_t st = v[i].a[j].info>>32, en = (uint32_t)v[i].a[j].info;
-			if (en - st < min_len * 2 || v[i].a[j].size > max_sub_occ)
+			if (en - st < min_len * 2 || v[i].a[j].size > max_sub_occ || v[i].a[j].size < min_sub_occ)
 				continue;
 			t = &s[n_s++];
 			t->min_len = (en - st) / 2 > min_len? (en - st) / 2 : min_len;

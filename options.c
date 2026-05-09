@@ -9,6 +9,7 @@ static void mb_opt_reset(mb_opt_t *opt)
 	opt->max_sr_len = 325;
 	// seeding options
 	opt->max_sub_occ = 10;
+	opt->min_sub_occ = 1;
 	opt->max_occ = 250;
 	// chaining options
 	opt->max_chain_skip = 25;
