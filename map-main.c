@@ -306,6 +306,7 @@ static ko_longopt_t long_options[] = {
 	{ "adap",         ko_required_argument, 308 },
 	{ "chain-only",   ko_no_argument,       309 },
 	{ "meth",         ko_no_argument,       310 },
+	{ "hic",          ko_no_argument,       311 },
 	{ "dbg-aln-seq",  ko_no_argument,       601 },
 	{ "dbg-anchor",   ko_no_argument,       602 },
 	{ "dbg-seed",     ko_no_argument,       603 },
@@ -327,8 +328,8 @@ static int usage(FILE *fp, const mb_opt_t *opt)
 	fprintf(fp, "    -l NUM           treat reads <NUM as short reads in the default adaptive mode [%d]\n", opt->max_sr_len);
 	fprintf(fp, "    -R STR           SAM read group line in a format like '@RG\\tID:foo\\tSM:bar' []\n");
 	fprintf(fp, "    -b STR           output a base alignment tag: cs, ds or MD []\n");
-	fprintf(fp, "    -5               take the alignment with the smallest query position as primary\n");
-	fprintf(fp, "    --meth           mapping directional bisulfite sequencing reads\n");
+	fprintf(fp, "    --hic            map Hi-C reads; equivalent to option -5P\n");
+	fprintf(fp, "    --meth           map *directional* bisulfite sequencing reads\n");
 	fprintf(fp, "  Mapping:\n");
 	fprintf(fp, "    -k INT           min seed length [%d]\n", opt->min_len);
 	fprintf(fp, "    -c NUM           max seed occurrences [%d]\n", opt->max_occ);
@@ -355,6 +356,7 @@ static int usage(FILE *fp, const mb_opt_t *opt)
 	fprintf(fp, "    --outn=INT       output up to INT secondary alignments [0]\n");
 	fprintf(fp, "    -y               copy FASTA/Q comments to output\n");
 	fprintf(fp, "    -Y               use soft clipping for supplementary alignments\n");
+	fprintf(fp, "    -5               take the alignment with the smallest query position as primary\n");
 	fprintf(fp, "    -K NUM1[,NUM2]   process NUM1-NUM2 bp of query sequences in a batch [100m,1g]\n");
 	fprintf(fp, "    --version        print version number\n");
 	fprintf(fp, "    --help           print this help message\n");
@@ -442,6 +444,8 @@ int main_map(int argc, char *argv[])
 			mo.flag |= MB_F_NO_ALN;
 		} else if (c == 310) { // --meth
 			mo.flag |= MB_F_METH;
+		} else if (c == 311) { // --hic
+			mo.flag |= MB_F_PRIMARY5 | MB_F_NO_PAIRING;
 		} else if (c == 601) { // --dbg-aln-seq
 			kom_dbg_flag |= MB_DBG_ALN_SEQ;
 		} else if (c == 602) { // --dbg-anchor

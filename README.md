@@ -9,7 +9,11 @@ cd minibwa && make
 
 # other examples without test data
 minibwa map -t16 ref.index long-read.fq > aln.paf             # align long reads
-minibwa map -a -5P ref.index reads.interleaved.fq > aln.sam   # align Hi-C short reads
+minibwa map -a --hic ref.index reads.interleaved.fq > aln.sam # align Hi-C short reads
+
+# align *directional* bisulfite sequencing (BS-seq) reads
+minibwa index --meth -t8 ref.fa                               # generate BS-seq index
+minibwa map -a --meth ref.fa read1.fq read2.fq > aln.sam      # map BS-seq reads
 ```
 
 ## Introduction
@@ -73,7 +77,7 @@ individual read lengths. It works for both short and accurate long reads.
 ```sh
 minibwa map -at8 ref.fa read1.fq read2.fq   # map paired-end reads and output SAM
 minibwa map -t8 ref.fa read.fa.gz           # map single-end or long reads and output PAF
-minibwa map -5P ref.fa hic1.fq hic2.fq      # map Hi-C short reads
+minibwa map --hic ref.fa hic1.fq hic2.fq    # map Hi-C short reads
 ```
 Note in the default adaptive mode, `-g`/`-w`/`-W`/`-N`/`-m`/`-s` only changes
 the short-read setting; the long-read setting is fixed. This mode is disabled

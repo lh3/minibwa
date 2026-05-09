@@ -1,4 +1,4 @@
-.TH minibwa 1 "21 April 2026" "minibwa-0.0 (r265)" "Bioinformatics tools"
+.TH minibwa 1 "9 May 2026" "minibwa-0.0 (r307)" "Bioinformatics tools"
 .SH NAME
 .PP
 minibwa - short/long-read alignment against a reference genome
@@ -33,6 +33,26 @@ minibwa map
 .I output.sam
 .RE
 
+* Indexing and aligning bisulfite sequencing reads:
+.RS 4
+minibwa index
+.B --meth
+.RB [ -t
+.IR nThreads ]
+.I ref.fa
+.RI [ idxPrefix ]
+.br
+minibwa map
+.B --meth -a
+.RB [ -t
+.IR nThreads ]
+.I idxPrefix
+.I read1.fq.gz
+.I read2.fq.gz
+>
+.I output.sam
+.RE
+
 .SH DESCRIPTION
 Minibwa aligns short reads against a reference genome. It is the successor of
 bwa-mem with a different algorithm. Minibwa is over three times as fast as the
@@ -54,6 +74,7 @@ structural changes anyway.
 .RB [ -l ]
 .RB [ -t
 .IR nThreads ]
+.RB [ --meth ]
 .I ref.fa
 .RI [ idxPrefix ]
 
@@ -79,6 +100,12 @@ algorithm by default which uses over 50 GB for a human genome.
 .BI -t \ INT
 Number of threads for the libsais algorithm [1]. Minibwa needs to be compiled
 with OpenMP to enable this option.
+.TP
+.B --meth
+Generate an index for aligning bisulfite sequencing reads. Minibwa will
+additionally generate
+.IR idxPrefix .meth.mbw
+which combines C-to-T and G-to-A converted reference genomes.
 
 .SH THE MAP COMMAND
 .SS Summary
@@ -127,11 +154,18 @@ or
 .B MD
 []. Only one tag is allowed.
 .TP
-.B -5
-In the SAM output, if a read has supplementary alignments, take the alignment
-with the smallest query (not genomic) position as primary. This mode, combined with
-.BR -P ,
-is commonly used for mapping Hi-C reads.
+.B --hic
+Map Hi-C reads. Equivalent to option
+.BR -5P .
+.TP
+.B --meth
+Map
+.B directional
+bisulfite sequencing (BS-seq) data. Require an index built with
+.BR --meth .
+In this mode, an unmethylated C on read 1 is expected to be converted to T and
+an unmethylated G on read 2 converted to A. Minibwa does not support
+undirectional BS-seq.
 
 .SS Mapping Options
 .TP 10
@@ -281,6 +315,12 @@ Copy FASTA/Q comments to output
 .B -Y
 In the SAM output, use soft clipping for supplementary alignments
 .TP
+.B -5
+In the SAM output, if a read has supplementary alignments, take the alignment
+with the smallest query (not genomic) position as primary. This mode, combined with
+.BR -P ,
+is commonly used for mapping Hi-C reads.
+.TP
 .B -K \fINUM1\fR[,\fINUM2\fR]
 Process
 .IR NUM1 - NUM2
@@ -341,3 +381,5 @@ cs	Z	Difference string
 .TP 2
 *
 Minibwa does not work with noisy long reads or spliced alignment.
+*
+Minibwa does not support undirectional bisulfite sequencing data.
