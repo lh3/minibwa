@@ -276,6 +276,31 @@ A gap of length
 .I k
 costs
 .RI min( O1 + k * E1 , O2 + k * E2 ).
+.TP
+.B -L \fIINT1\fR[,\fIINT2\fR]
+5'- and 3'-end soft-clip penalty [0,0]. After the DP extension, the
+extend-to-end alignment is preferred over a clipped local-best
+alignment iff
+.RI ( mqe + end_bonus + L >= max ),
+where
+.I L
+is the relevant
+.B -L
+value (
+.I INT1
+for 5' /
+.I INT2
+for 3'). If
+.I INT2
+is not specified, it is set to
+.IR INT1 .
+Higher
+.I L
+makes the aligner more willing to extend through a noisy read tail
+rather than soft-clip it. Mirrors bwa-mem's
+.BR -L
+flag; default 0,0 preserves historical minibwa behavior (bwa-mem
+defaults to 5,5).
 
 .SS Paired-end Options
 .TP 10

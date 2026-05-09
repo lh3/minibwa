@@ -63,6 +63,7 @@ typedef struct {
 	int32_t q, q2;    // gap open, long gap open
 	int32_t e, e2;    // gap extension, long gap extension
 	int32_t end_bonus;
+	int32_t pen_clip5, pen_clip3; // 5'/3' soft-clip penalty (bwa-mem `-L`); extend-to-end is preferred to clipping iff mqe+end_bonus+pen_clip >= max
 	int32_t min_dp_max; // min_dp_max*a is the min score
 	int32_t zdrop;
 	int32_t zdrop_inv;

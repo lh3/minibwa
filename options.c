@@ -24,6 +24,10 @@ static void mb_opt_reset(mb_opt_t *opt)
 	opt->q = 12, opt->q2 = 23;
 	opt->e = 2,  opt->e2 = 1;
 	opt->b_ambi = 1;
+	/* Default 0 to preserve historical minibwa extend/clip behavior; bwa-mem
+	 * default is 5,5 but enabling that as the minibwa default would shift
+	 * existing alignments unannounced. */
+	opt->pen_clip5 = opt->pen_clip3 = 0;
 	// pairing options
 	opt->max_pe_ins = 10000;
 	opt->max_rescue = 10;
