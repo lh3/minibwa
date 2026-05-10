@@ -57,7 +57,6 @@ void mb_seed_intv(void *km, const mb_bwt_t *bwt, int32_t len, const uint8_t *seq
 void mb_seed_intv_batch(void *km, const mb_bwt_t *bwt, int32_t n_seq, const int32_t *len, uint8_t *const* seq, int32_t min_len, int32_t max_sub_occ, mb_sai_v *v);
 void mb_anchor(void *km, const mb_idx_t *idx, mb_sai_v *u, int32_t qlen, l2b_meth_t mt, int32_t max_occ, mb_anchor_v *v);
 void mb_anchor_sort(const l2b_t *l2b, int64_t n_a, mb_anchor_t *a);
-int64_t mb_anchor_meth_flt(void *km, const l2b_t *l2b, l2b_meth_t mt, int32_t qlen, const uint8_t *seq4, int64_t n_a, mb_anchor_t *a);
 
 // defined in lchain.c
 mb_anchor_t *mb_lchain_dp(void *km, const l2b_t *l2b, int max_dist_x, int max_dist_y, int bw, int max_skip, int max_iter, int min_sc, float chn_pen_gap,

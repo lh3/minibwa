@@ -583,7 +583,6 @@ mb_hit_t *mb_map_sai(const mb_opt_t *opt, const mb_idx_t *idx, int64_t qlen, con
 	mb_anchor(b->km, idx, u, qlen, mt, opt->max_occ, &v);
 	kfree(b->km, u->a); // no longer needed
 	u->n = 0, u->a = 0;
-	v.n = mb_anchor_meth_flt(b->km, idx->l2b, mt, qlen, seq, v.n, v.a);
 
 	// initial chaining
 	if (kom_dbg_flag & MB_DBG_ANCHOR) mb_dbg_anchor(idx, qlen, v.n, v.a, qname);
