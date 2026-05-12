@@ -77,9 +77,9 @@ that produces alignment functionally equivalent~\citep{Regier:2018aa} to BWA-MEM
 However, designed more than a decade ago, BWA-MEM has several limitations that prevent further optimization but can be alleviated if we accept breaking changes.
 First, BWA-MEM uses a complex algorithm to seed alignment~\citep{Li:2012fk}.
 It is challenging to apply the latency hiding technique, which we will explain later, to speed up this step.
-Second, BWA-MEM chaining is heuristic and inferior to the minimap2~\citep{Li:2018ab} chaining algorithm.
+Second, BWA-MEM chaining is heuristic and inferior to the minimap2 chaining algorithm~\citep{Li:2018ab}.
 It likely does not work well for short reads longer than 500bp, which will become more common with Roche's SBX sequencing technology~\citep{Kokoris2025.02.19.639056}.
-The boundary between short and long reads will be blurred in future.
+The boundary between short and long reads is blurring.
 Third, BWA-MEM uses a non-SIMD-based extension algorithm with intricate boundary conditions.
 This greatly complicates SIMD-based equivalence in BWA-MEM2 and increases maintenance burden.
 Fourth, BWA-MEM tries too hard in highly repetitive regions.
@@ -111,8 +111,8 @@ and Arioc~\citep{Wilton:2018aa},
 also natively support BS-seq.
 
 Among these algorithms, Bismark~\citep{Krueger:2011aa} is by far the most cited,
-partly because it is a wrapper around stock Bowtie~\citep{Langmead:2009aa} and Bowtie2~\citep{Langmead:2012fk}
-which are battle tested and whose behavior is well understood.
+partly because it is a wrapper around stock Bowtie2~\citep{Langmead:2012fk}
+which is battle tested and whose behavior is well understood.
 BWA-Meth~\citep{Pedersen:2014aa} is a popular wrapper around BWA-MEM
 and has been shown to have good performance in recent benchmarks~\citep{Foox:2021aa,Gong_2022,Kerns_2025,Lin_2025}.
 It concatenates C-to-T and G-to-A converted reference genomes and builds one FM-index.
@@ -125,18 +125,72 @@ First, with the directional protocol, read 1 should be mapped either to the forw
 Unaware of this constraint, BWA-MEM will also attempt to map read 1 to the reverse C-to-T and forward G-to-A reference genomes.
 Although these hits are later filtered out by BWA-Meth,
 they waste computing time and may affect mapping quality calculation.
-Second, if a read 1 is mapped to the C-to-T reference, read 2 will be expected to get mapped to the G-to-A reference.
-The two reads in a pair are not locate on the same contig.
+Second, if read 1 is mapped to the C-to-T reference, read 2 is expected to get mapped to the G-to-A reference
+--- the two reads in a pair are not located on the same contig.
 This breaks BWA-MEM read pairing.
 Third, BWA-MEM attempts to rescue a read if its mate is well aligned.
 However, because the two reads are not supposed to be aligned to the same contig due to base conversion,
-mate rescue would often fail.
+mate rescue would fail.
 
 BISCUIT~\citep{Zhou:2024ac} and BSBolt~\citep{Farrell:2021aa} are also built upon BWA-MEM.
 They avoid the issues mentioned above by customizing BWA-MEM source code specifically for BS-seq data.
 They are theoretically more rigorous than BWA-Meth.
 As a tradeoff, though, the deep code customization makes it challenging to adopt the faster BWA-MEM2 implementation.
 Combining an efficient mapping algorithm with the BISCUIT/BSBolt strategy will yield an even better BS-seq mapper.
+
+In this article, we will describe minibwa, the next iteration of BWA-MEM.
+Minibwa aligns standard WGS short reads and Hi-C reads like BWA-MEM
+and additionally maps accurate long reads and natively supports BS-seq data.
+
+\section{Methods}
+
+\subsection{Definitions}
+
+$\Sigma\triangleq\{{\tt A},{\tt C},{\tt G},{\tt T}\}$ is the DNA alphabet
+with lexicographical order ${\tt A}<{\tt C}<{\tt G}<{\tt T}$.
+$P\in\Sigma^*$ is a \emph{string} of length $|P|$.
+$P[i]$, $0\le i<|P|$, is the $i$-the symbol and
+$P[i,j)$ is the $(j-i)$-long substring starting at position $i$.
+Operator $\circ$ concatenates two strings.
+It may be omitted if string concatenation is apparent in the context.
+For $a\in\Sigma$, $\overline{a}$ is the Watson-Crick complement of $a$.
+$\overline{P}$ is the reverse complement of string $P$.
+
+$R\in\Sigma^*$ is the reference genome with all contigs concatenated.
+$T\triangleq R\circ\overline{R}\circ\$$ further concatenates $R$ and its reverse complement
+with a trailing \emph{sentinel} $\$$ that is smaller than all symbols in $\Sigma$.
+For convenice, let $n=|T|$ and $T[-1]=T[n-1]=\$$.
+\emph{Suffix array} $S$ is a permutation of integers in $[0,n)$ such that
+$S(i)$ is the position of the $i$-th smallest suffix of $T$.
+$B$ is the \emph{Burrows-Wheeler Transform} (\emph{BWT}) of $T$.
+By definition, $B[i]=T[S(i)-1]$.
+
+\begin{algorithm}[tb]
+	\caption{Backward and forward extension}\label{algo:backfor}
+	\begin{algorithmic}[1]
+		\Procedure{BackwardExt}{$B,(k,k',s),a$}
+			\ForAll{$b<\overline{a}$}\Comment{$b$ can be $\$$}
+				\State $k'\gets k'+\big[\pi_B(\overline{b},k+s)-\pi_B(\overline{b},k)\big]$
+			\EndFor
+			\State $s\gets \pi_B(a,k+s)-\pi_B(a,k)$
+			\State $k\gets \pi_B(a,k)$
+			\State \Return{$(k,k',s)$}
+		\EndProcedure
+		\Procedure{ForwardExt}{$B,(k,k',s),a$}
+			\State $(k',k,s)\gets${\sc BackwardExt}$(B,(k',k,s),\overline{a})$
+			\State \Return{$(k,k',s)$}
+		\EndProcedure
+	\end{algorithmic}
+\end{algorithm}
+
+The \emph{double-strand suffix array interval} (\emph{ds-interval}) of $P$
+is a 3-tuple $({\rm lo}(P),{\rm lo}(\overline{P}),{\rm occ}(P))$ with
+${\rm lo}(P)\triangleq|\{i:T[i,n)<P\}|$ and ${\rm occ}(P)\triangleq|\{i:T[i,i+|P|)=P\}|$.
+If the ds-interval of $P$ is $(k,k',s)$,
+function {\sc BackwardExt()} in Algorithm~\ref{algo:backfor} calculates the ds-interval of $aP$
+and {\sc ForwardExt()} calculates the ds-interval of $Pa$,
+where $\pi_B(a,k)\triangleq |\{i:B[i]<a\}|+|\{i<k:B[i]=a\}|$ is the LF-mapping.
+Please see \citet{Li:2024ac} for the proof of this algorithm.
 
 \section*{Acknowledgments}
 
@@ -147,7 +201,7 @@ blabla
 H.L. conceived the project, implemented the core algorithm, analyzed the data and drafted the manuscript.
 N.H. added new features, contributed to development and reviewed the draft.
 
-\section*{Conflict of interest}
+%\section*{Conflict of interest}
 
 N.H. is an employee of Fulcrum Genomics LLC.
 
