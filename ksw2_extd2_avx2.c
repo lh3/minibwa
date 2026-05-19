@@ -244,26 +244,26 @@ void ksw_extd2_avx2(void *km, int qlen, const uint8_t *query, int tlen, const ui
 		if (!approx_max) { // find the exact max with a 32-bit score array
 			int32_t max_H, max_t;
 			if (r > 0) {
-				int32_t HH[8], tt[8], en1 = st0 + (en0 - st0) / 8 * 8, i;
-				__m256i max_H_, max_t_;
+				int32_t HH[4], tt[4], en1 = st0 + (en0 - st0) / 4 * 4, i;
+				__m128i max_H_, max_t_;
 				max_H = H[en0] = en0 > 0? H[en0-1] + u8[en0] : H[en0] + v8[en0];
 				max_t = en0;
-				max_H_ = _mm256_set1_epi32(max_H);
-				max_t_ = _mm256_set1_epi32(max_t);
-				for (t = st0; t < en1; t += 8) {
-					__m256i H1, tmp, t_;
-					H1 = _mm256_loadu_si256((__m256i*)&H[t]);
-					t_ = _mm256_cvtepi8_epi32(_mm_loadl_epi64((const __m128i*)&v8[t]));
-					H1 = _mm256_add_epi32(H1, t_);
-					_mm256_storeu_si256((__m256i*)&H[t], H1);
-					t_ = _mm256_set1_epi32(t);
-					tmp = _mm256_cmpgt_epi32(H1, max_H_);
-					max_H_ = _mm256_blendv_epi8(max_H_, H1, tmp);
-					max_t_ = _mm256_blendv_epi8(max_t_, t_, tmp);
+				max_H_ = _mm_set1_epi32(max_H);
+				max_t_ = _mm_set1_epi32(max_t);
+				for (t = st0; t < en1; t += 4) {
+					__m128i H1, tmp, t_;
+					H1 = _mm_loadu_si128((__m128i*)&H[t]);
+					t_ = _mm_setr_epi32(v8[t], v8[t+1], v8[t+2], v8[t+3]);
+					H1 = _mm_add_epi32(H1, t_);
+					_mm_storeu_si128((__m128i*)&H[t], H1);
+					t_ = _mm_set1_epi32(t);
+					tmp = _mm_cmpgt_epi32(H1, max_H_);
+					max_H_ = _mm_blendv_epi8(max_H_, H1, tmp);
+					max_t_ = _mm_blendv_epi8(max_t_, t_, tmp);
 				}
-				_mm256_storeu_si256((__m256i*)HH, max_H_);
-				_mm256_storeu_si256((__m256i*)tt, max_t_);
-				for (i = 0; i < 8; ++i)
+				_mm_storeu_si128((__m128i*)HH, max_H_);
+				_mm_storeu_si128((__m128i*)tt, max_t_);
+				for (i = 0; i < 4; ++i)
 					if (max_H < HH[i]) max_H = HH[i], max_t = tt[i] + i;
 				for (; t < en0; ++t) {
 					H[t] += (int32_t)v8[t];
