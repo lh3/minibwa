@@ -372,7 +372,7 @@ static void mb_align_pair(void *km, const mb_opt_t *opt, int qlen, const uint8_t
 	} else if (opt->q == opt->q2 && opt->e == opt->e2) { // affine gap
 		ksw_extz2_sse(km, qlen, qseq, tlen, tseq, 5, mat, opt->q, opt->e, w, zdrop * opt->a, end_bonus, ksw_flag, ez);
 	} else { // dual affine gap
-		ksw_extd2_sse(km, qlen, qseq, tlen, tseq, 5, mat, opt->q, opt->e, opt->q2, opt->e2, w, zdrop * opt->a, end_bonus, ksw_flag, ez);
+		ksw_extd2_simd(km, qlen, qseq, tlen, tseq, 5, mat, opt->q, opt->e, opt->q2, opt->e2, w, zdrop * opt->a, end_bonus, ksw_flag, ez);
 	}
 	if (kom_dbg_flag & MB_DBG_ALN_SEQ) {
 		int i;

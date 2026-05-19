@@ -372,6 +372,8 @@ static inline void yes_or_no(mb_opt_t *opt, uint64_t flag, int long_idx, const c
 
 int main_map(int argc, char *argv[])
 {
+	extern int ksw_set_simd(void);
+	extern int ksw_set_avx2(void);
 	const char *opt_str = "x:o:k:c:m:p:A:B:U:b:O:E:t:K:N:PyYR:aul:w:W:g:5s:";
 	int32_t c;
 	mb_idx_t *idx;
@@ -379,6 +381,8 @@ int main_map(int argc, char *argv[])
 	char *fn_out = 0, *rg_line = 0, *s;
 	ketopt_t o = KETOPT_INIT;
 
+	ksw_set_simd();
+	ksw_set_avx2();
 	mb_opt_init(&mo);
 	while ((c = ketopt(&o, argc, argv, 1, opt_str, long_options)) >= 0) { // test command line options and apply option -x/preset first
 		if (c == 'x') {
