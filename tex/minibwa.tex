@@ -72,7 +72,7 @@ BWA-MEM2~\citep{DBLP:conf/ipps/VasimuddinMLA19} revamps the memory layout of FM-
 and accelerates extension alignment with Single Instruction Multiple Data (SIMD) instructions.
 It is typically 50--100\% faster and outputs identical alignment.
 BWA-MEME~\citep{Jung:2022aa} further speeds up BWA-MEM2 with learned index and still promises identical output.
-BWA-MEM3 is a new fork of BWA-MEM2 with speedup from the latency hiding technique and more frequent ungapped alignment to skip full dynamic programming.
+BWA-MEM3 is a new fork of BWA-MEM2 with speedup from latency hiding and more fast path to skip full dynamic programming.
 Sentieon BWA is a proprietary drop-in replacement of BWA-MEM.
 Parabricks~\citep{OConnell:2023aa,Zhu2025.07.23.666378} provides a GPU-based partial reimplementation of BWA-MEM
 that produces alignment functionally equivalent~\citep{Regier:2018aa} to BWA-MEM alignment.
@@ -412,27 +412,33 @@ During early development of BWA-MEM, we tried the same seeding algorithm.
 However, as the old SMEM-finding algorithm is slow for $(19,2)$-SMEMs in the second round,
 we ended up with a different seeding strategy in BWA-MEM.
 
-The chaining algorithm in minibwa is similar to minimap2~\citep{Li:2018ab} except minor adjustment for variable-length seeds.
-Minibwa retains up to 50 best chains for a short read
+Minibwa adapted the minimap2 chaining algorithm~\citep{Li:2018ab} for variable-length seeds.
+It retains up to 50 best chains for a short read
 and uses the minimap2 algorithm to close gaps between seeds or extends the first or the last seeds.
 Minibwa applies SIMD-based dynamic programming~\citep{Suzuki:2018aa} if an ungapped alignment contains many mismatches.
 
-In comparison, BWA-MEM uses a heuristic chaining algorithm that is less accurate.
-It only performs extension alignment from each seed but does not attempt to close gaps between seeds.
-For reads from highly repetitive regions,
-BWA-MEM tends to test more chains than minibwa but to fill a smaller portion of the dynamic programming matrix in each extension.
-Overall, BWA-MEM still pays more effort for reads in centromeres or acrocentric short arms.
+%In comparison, BWA-MEM uses a heuristic chaining algorithm that is less accurate.
+%It only performs extension alignment from each seed but does not attempt to close gaps between seeds.
+%For reads from highly repetitive regions,
+%BWA-MEM tends to test more chains than minibwa but to fill a smaller portion of the dynamic programming matrix in each extension.
+%Overall, BWA-MEM still pays more effort for reads in centromeres or acrocentric short arms.
 
 \subsection{Paired-end mapping}\label{sec:pe}
 
 Minibwa finds properly paired reads using the same logic as BWA-MEM.
 If a read is mapped but its mate is not mapped nearby,
 minibwa locally maps the mate in a window close to the mapped read.
-On real data, this involves Smith-Waterman alignment~\citep{Smith:1981aa} between a 150bp read and a reference substring of several hundred basepairs in length.
+On real data, this involves Smith-Waterman alignment~\citep{Smith:1981aa} between a $\sim$150 bp read $P$ and a reference substring $R$ of several hundred basepairs.
 Unlike BWA-MEM that always initiates full alignment,
-minibwa prefilters the read-reference pair as follows.
-
-(LATER)
+minibwa prefilters the read-reference pair by testing $q$-mer matches.
+More exactly,
+$$
+M_t=|\{(i,j):\mbox{$P[i,i+q)=R[j,j+q)$ and $j-i=t$}\}|
+$$
+is the number of $k$-mer matches between $P$ and $R[t,t+|P|)$.
+$\max_t M_t$ gives us a hint about the best ungapped alignment between $P$ and $R$.
+Minibwa only applies Smith-Waterman if $\max_t M_t\ge10$,
+effectively reducing unsuccessful alignment.
 
 \subsection{Parameter setting based on read lengths}
 
@@ -460,13 +466,17 @@ and converts all G bases on read 2 to A.
 It finds seeds against the converted FM-index.
 A seed on read 1 is only retained if it comes from the forward C-to-T genome or the reverse G-to-A genome;
 similarly, a seed on read 2 is retained if it comes from the forward G-to-A or the reverse C-to-T genome.
-Minibwa performs base alignment and mate rescue entirely in the converted space.
+Minibwa applies chaining normally and performs base alignment and mate rescue entirely in the converted space.
 
 \section{Results}
 
-We evaluated the mapping accuracy of minibwa on simulated short and long reads and
-measured the performance on real data including WGS reads,
-Hi-C short reads and directional BS-seq reads.
+We evaluated the mapping accuracy on simulated short and long reads and
+measured the performance on real data.
+We tested BWA-MEM v0.7.19~\citep{Li:2013aa}, BWA-MEM2 v2.2.1~\citep{DBLP:conf/ipps/VasimuddinMLA19},
+BWA-MEM3 v0.2.1, Bowtie2 v2.5.5~\citep{Langmead:2012fk}, minimap2 v2.30~\citep{Li:2018ab} and strobealign v0.17.0~\citep{Sahlin:2022aa} for short reads,
+Winnowmap2 v2.03~\citep{Jain:2020aa,Jain:2022ua} for long reads
+and BISCUIT v1.8.1~\citep{Zhou:2024ac}, Bismark v0.25.1~\citep{Krueger:2011aa}
+and BWA-Meth v0.2.9~\citep{Pedersen:2014aa} for BS-seq reads.
 
 \subsection{Mapping accuracy on simulated data}
 
@@ -487,32 +497,32 @@ Each point in the figures gives the fraction of mapped reads and the fraction of
 }\label{fig:roc}
 \end{figure*}
 
-We simulated short reads using mason~\citep{fu_mi_publications962} with
+We simulated short reads using mason v2.0.9~\citep{fu_mi_publications962} with
 ``{\tt -{}-illumina-read-length 150 -{}-illumina-prob-mismatch-scale\\2.5}''.
-We simulated long reads with Badread~\citep{Wick2019},
+We simulated long reads using Badread v0.4.2~\citep{Wick2019}
 with the default option for Nanopore reads
-and option ``{\tt -{}-error\_model pacbio2021 -{}-qscore\_model pacbio2021 -{}-length 15000,3000\\-{}-identity 27,3}'' for HiFi reads.
+and option ``{\tt -{}-error\_model pacbio2021 -{}-qscore\_model pacbio2021 -{}-length 15000,3000 -{}-identity 27,3}'' for HiFi reads.
 We encoded the true read coordiates in read names with paftools in the minimap2 package.
 and plotted the results (Fig.~\ref{fig:roc}).
 A mapper of higher accuracy tends to yield a curve closer to the upper left corner.
 
-BWA-MEM is slightly more accurate than minibwa for WGS short reads (Fig.~\ref{fig:roc}a and Fig.~\ref{fig:roc}b).
-The difference is primarily driven by centromeric or acrocentric regions (Fig.~\ref{fig:roc}b versus Fig.~\ref{fig:roc}c)
-as minibwa pays less effort in such regions (Section~\ref{sec:align}).
-Minibwa competes with minimap2~\citep{Li:2018ab} and Winnowmap2~\citep{Jain:2020aa,Jain:2022ua} for mapping accurate long reads (Fig.~\ref{fig:roc}e and Fig.~\ref{fig:roc}f).
+BWA-MEM is slightly more accurate than minibwa for WGS short reads (Fig.~\ref{fig:roc}a and~\ref{fig:roc}b).
+The difference is primarily driven by centromeric or acrocentric regions (Fig.~\ref{fig:roc}b versus~\ref{fig:roc}c)
+as minibwa extends fewer reads in such regions (Section~\ref{sec:align}).
+Minibwa competes with minimap2 and Winnowmap2 for mapping accurate long reads (Fig.~\ref{fig:roc}e and~\ref{fig:roc}f).
 
-All aligners shown in Fig.~\ref{fig:roc}d use the 3-base strategy and should be able to align normal WGS reads.
-Both BWA-Meth~\citep{Pedersen:2014aa} and BISCUIT~\citep{Zhou:2024ac} are built on top of BWA-MEM.
-BWA-Meth is not as accurate as minibwa due to its limitations explained in Introduction.
+All BS-seq aligners in Fig.~\ref{fig:roc}d use the 3-base strategy and can map normal WGS reads in theory.
+Both BWA-Meth and BISCUIT are built on top of BWA-MEM.
+BWA-Meth is not as accurate due to its limitations explained in Introduction.
 In theory, BISCUIT uses a better strategy than minibwa because
 it properly penalizes a mismatch between a T base on the reference and a C on the read --- this would not happen unless there were a real SNP.
-It is not clear to us why BISCUIT is less accurate than minibwa.
-Bismark is known to map fewer reads than BWA-Meth~\citep{Foox:2021aa,Gong_2022,Kerns_2025,Lin_2025}.
+We are not sure why BISCUIT is less accurate than minibwa.
+Bismark is known to map fewer reads than BWA-Meth~\citep{Gong_2022}.
 
 We note that on real data, most false read alignment at high mapping quality is caused by large structural variants between individuals.
 For example, if the reference genome has one copy of a gene but the sequenced sample has an extra copy,
 all reads from the extra copy will be mismapped at high mapping quality.
-The theoretical accuracy as is shown in Fig.~\ref{fig:roc} may not be strongly correlated with downstream analyses.
+The theoretical accuracy as is shown in Fig.~\ref{fig:roc} may not reflect accuracy in downstream analyses.
 
 \subsection{Mapping performance on real data}
 
@@ -526,12 +536,11 @@ Alignment output is redirected to {\tt /dev/null} except for Bismark which has t
 
 We obtained multiple whole-genome real datasets (see Data Availability) and aligned them to GRCh38 (Fig.~\ref{fig:perf}).
 For standard WGS short reads, strobealign is the fastest and Bowtie2 is the most memory efficient.
-BWA-MEM2 is 67\% faster than BWA-MEM and both BWA-MEME and BWA-MEM3 are 47\% faster than BWA-MEM2 (Fig.~\ref{fig:perf}a).
-Minibwa is 284\% faster than BWA-MEM, 130\% faster than BWA-MEM2 and 57\% faster than BWA-MEME and BWA-MEM3.
+BWA-MEM2 is 67\% faster than BWA-MEM and both BWA-MEME and BWA-MEM3 are even faster (Fig.~\ref{fig:perf}a).
+Minibwa is about four times as fast as BWA-MEM and more than twice as fast as BWA-MEM2.
 The gap between minibwa and other BWA-MEM implementations is smaller for Hi-C and Roche's single-end SBX reads
-perhaps because minibwa's new mate rescue heuristic (Section~\ref{sec:pe}) is disabled for these data types.
+probably due to the lack of mate rescue where minibwa has an advantage with more heuristics (Section~\ref{sec:pe}).
 For long reads, minibwa is a little faster than minimap2 and is an order of magnitude faster than Winnowmap2.
-For BS-seq short reads, minibwa also leads in performance.
 
 \subsection{Effect on short-read variant calling}
 
@@ -550,15 +559,23 @@ Minibwa & 46,367 & 7,544 & 36,321 & 5,308 \\
 \end{tabular*}
 \end{table}
 
-We aligned HG002 short reads to GRCh38, called small variants with DeepVariant v1.10.0~\citep{Poplin:2018ab}
+We aligned HG002 short reads~\citep{Baid2020.12.11.422022} to GRCh38, called small variants with DeepVariant v1.10.0~\citep{Poplin:2018ab}
 and compared the calls to the GIAB Q100 ground truth v1.1~\citep{Hansen2025.09.21.677443} with RTG vcfeval v3.13~\citep{Cleary023754}.
 As is shown in Table~\ref{tab:var}, minibwa closely matches BWA-MEM on small variant calling accuracy.
 
 \section{Discussions}
 
+We developed minibwa for aligning genomic short and long reads and bisulfite sequencing reads.
+It trades the full compatibility with BWA-MEM for deeper algorithmic improvement
+which enables long-read alignment and doubles the performance over BWA-MEM2.
+As the developer of BWA-MEM and minimap2, we take minibwa as the full replacement of BWA-MEM.
+The only BWA-MEM feature missing from minibwa is the support of alternate contigs in the reference genome
+which is not well implemented in BWA-MEM.
+We plan to redesign this feature for improved accuracy in future releases.
+
 \section*{Acknowledgments}
 
-blabla
+We are grateful to Johan Henriksson for porting minibwa to Rust.
 
 \section*{Author contributions}
 
@@ -575,7 +592,7 @@ This work is supported by National Institute of Health grant R01HG010040, R01HG0
 
 \section*{Data availability}
 
-The minibwa source code is available at \url{https://github.com/lh3/minibwa}.
+The minibwa source code: \url{https://github.com/lh3/minibwa};
 HG002 NovaSeq short reads: \url{https://bit.ly/hg002-baid-sr-30x};
 HG002 PacBio HiFi reads: \url{https://bit.ly/hg002-hprc-revio};
 HG002 Nanopore R10 reads: \url{s3://ont-open-data/giab\_2023.05/};
