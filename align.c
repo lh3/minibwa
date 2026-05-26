@@ -232,7 +232,7 @@ void mb_update_extra(void *km, mb_hit_t *r, const uint8_t *qseq, const uint8_t *
 			for (l = 0; l < len; ++l) {
 				int cq = qseq[qoff + l], ct = tseq[toff + l];
 				if (ct > 3 || cq > 3) ++n_ambi;
-				else if (ct != cq) ++n_diff;
+				else if (ct != cq) n_diff += (mat[ct * 5 + cq] < 0);
 				s += mat[ct * 5 + cq];
 				if (s < 0) s = 0;
 				else max = max > s? max : s;
@@ -330,13 +330,13 @@ static void mb_align_pair(void *km, const mb_opt_t *opt, int qlen, const uint8_t
 {
 	const int max_bw_adj_len = 100; // don't adjust bandwidth if sequences are too long
 	int32_t j, n_mm = -1;
-	if (opt->b_ts != 0 && opt->b != opt->b_ts) { // distinguish ts vs tv
+	if ((opt->b_ts != 0 && opt->b != opt->b_ts) || (opt->flag&MB_F_METH))
 		ksw_flag |= KSW_EZ_GENERIC_SC;
-	} else if ((ksw_flag & KSW_EZ_EXTZ_ONLY) && tlen >= qlen) { // ungapped extension
+	if ((ksw_flag & KSW_EZ_EXTZ_ONLY) && tlen >= qlen) { // ungapped extension
 		ksw_reset_extz(ez);
 		for (j = 0, ez->score = ez->max = 0; j < qlen; ++j) {
-			if (qseq[j] >= 4 || tseq[j] >= 4) ez->score -= opt->b_ambi, ++n_mm;
-			else ez->score += qseq[j] == tseq[j]? opt->a : -opt->b, n_mm += (qseq[j] != tseq[j]);
+			ez->score += mat[tseq[j] * 5 + qseq[j]];
+			n_mm += (tseq[j] > 3 || qseq[j] > 3 || mat[tseq[j] * 5 + qseq[j]] < 0);
 			if (ez->max < ez->score) ez->max = ez->score, ez->max_q = ez->max_t = j;
 		}
 		if (n_mm <= 2) {
@@ -347,12 +347,12 @@ static void mb_align_pair(void *km, const mb_opt_t *opt, int qlen, const uint8_t
 				return;
 			}
 		}
-	} else if (qlen == tlen && !(ksw_flag & KSW_EZ_EXTZ_ONLY)) { // ungapped alignment; TODO: make it work with generic scoring matrix
+	} else if (qlen == tlen && !(ksw_flag & KSW_EZ_EXTZ_ONLY)) { // ungapped alignment
 		int32_t max_gapped_score = (qlen - 2) * opt->a - 2 * (opt->q + opt->e);
 		ksw_reset_extz(ez);
 		for (j = 0, ez->score = 0; j < qlen; ++j) {
-			if (qseq[j] >= 4 || tseq[j] >= 4) ez->score -= opt->b_ambi, ++n_mm;
-			else ez->score += qseq[j] == tseq[j]? opt->a : -opt->b, n_mm += (qseq[j] != tseq[j]);
+			ez->score += mat[tseq[j] * 5 + qseq[j]];
+			n_mm += (tseq[j] > 3 || qseq[j] > 3 || mat[tseq[j] * 5 + qseq[j]] < 0);
 		}
 		if (n_mm <= 3 || ez->score > max_gapped_score) {
 			ez->cigar = ksw_push_cigar(km, &ez->n_cigar, &ez->m_cigar, ez->cigar, MB_CIGAR_MATCH, qlen);
@@ -558,13 +558,13 @@ static void mb_align1(void *km, const mb_opt_t *opt, const mb_idx_t *mi, int qle
 	max_back = is_sr? 0 : 10; // for long reads, allow up to 10bp "edges" from chain ends
 	r2->cnt = 0;
 	if (r->cnt == 0) return;
-	ksw_gen_nt4_mat(mat, opt->a, opt->b, opt->b_ts, opt->b_ambi);
+	if (r->rev) mt = l2b_meth_rev(mt);
+	ksw_gen_nt4_mat(mat, opt->a, opt->b, opt->b_ts, opt->b_ambi, (int)mt);
 	bw = (int)(opt->bw * 1.5 + 1.);
 	if (!is_sr) {
 		bw_long = (int)(opt->bw_long * 1.5 + 1.);
 		if (bw_long < bw) bw_long = bw;
 	} else bw_long = bw; // disable long gap in the short-read mode
-	if (r->rev) mt = l2b_meth_rev(mt);
 
 	if (is_sr) {
 		mb_max_stretch(r, a, &as1, &cnt1);
@@ -638,7 +638,7 @@ static void mb_align1(void *km, const mb_opt_t *opt, const mb_idx_t *mi, int qle
 
 	if (qs > 0 && ts > 0) { // left extension; probably the condition can be changed to "qs > qs0 && ts > ts0"
 		qseq = &qseq0[rev][qs0];
-		l2b_getseq_meth(mi->l2b, tid, ts0, ts, mt, tseq);
+		l2b_getseq(mi->l2b, tid, ts0, ts, tseq);
 		mb_seq_rev(qs - qs0, qseq);
 		mb_seq_rev(ts - ts0, tseq);
 		mb_align_pair(km, opt, qs - qs0, qseq, ts - ts0, tseq, mat, bw, opt->end_bonus, r->split_inv? opt->zdrop_inv : opt->zdrop, ksw_flag|KSW_EZ_EXTZ_ONLY|KSW_EZ_RIGHT|KSW_EZ_REV_CIGAR, ez);
@@ -685,7 +685,7 @@ static void mb_align1(void *km, const mb_opt_t *opt, const mb_idx_t *mi, int qle
 				bw1 = qe - qs > te - ts? qe - qs : te - ts;
 			// perform alignment
 			qseq = &qseq0[rev][qs];
-			l2b_getseq_meth(mi->l2b, tid, ts, te, mt, tseq);
+			l2b_getseq(mi->l2b, tid, ts, te, tseq);
 			mb_align_pair(km, opt, qe - qs, qseq, te - ts, tseq, mat, bw1, -1, opt->zdrop, ksw_flag|KSW_EZ_APPROX_MAX, ez); // first pass: with approximate Z-drop
 			// test Z-drop and inversion Z-drop
 			if ((zdrop_code = mm_test_zdrop(km, opt, qseq, tseq, ez->n_cigar, ez->cigar, mat, is_sr)) != 0)
@@ -730,7 +730,7 @@ static void mb_align1(void *km, const mb_opt_t *opt, const mb_idx_t *mi, int qle
 
 	if (!dropped && qe < qe0 && te < te0) { // right extension
 		qseq = &qseq0[rev][qe];
-		l2b_getseq_meth(mi->l2b, tid, te, te0, mt, tseq);
+		l2b_getseq(mi->l2b, tid, te, te0, tseq);
 		mb_align_pair(km, opt, qe0 - qe, qseq, te0 - te, tseq, mat, bw, opt->end_bonus, opt->zdrop, ksw_flag|KSW_EZ_EXTZ_ONLY, ez);
 		if (ez->n_cigar > 0) {
 			mb_append_cigar(r, ez->n_cigar, ez->cigar);
@@ -747,7 +747,7 @@ static void mb_align1(void *km, const mb_opt_t *opt, const mb_idx_t *mi, int qle
 
 	assert(te1 - ts1 <= te0 - ts0);
 	if (r->p) {
-		l2b_getseq_meth(mi->l2b, tid, ts1, te1, mt, tseq);
+		l2b_getseq(mi->l2b, tid, ts1, te1, tseq);
 		qseq = &qseq0[r->rev][qs1];
 		mb_update_extra(km, r, qseq, tseq, mat, opt->q, opt->e, opt->flag, !is_sr);
 	}
@@ -772,10 +772,11 @@ static int mb_align1_inv(void *km, const mb_opt_t *opt, const mb_idx_t *mi, int 
 	if (ql < opt->min_chain_score || ql > opt->max_gap) return 0;
 	if (tl < opt->min_chain_score || tl > opt->max_gap) return 0;
 
-	ksw_gen_nt4_mat(mat, opt->a, opt->b, opt->b_ts, opt->b_ambi);
-	tseq = (uint8_t*)kmalloc(km, tl);
 	if (!r1->rev) mt = l2b_meth_rev(mt); // TODO: check if this is correct
-	l2b_getseq_meth(mi->l2b, r1->tid, r1->te, r2->ts, mt, tseq);
+	ksw_gen_nt4_mat(mat, opt->a, opt->b, opt->b_ts, opt->b_ambi, (int)mt);
+
+	tseq = (uint8_t*)kmalloc(km, tl);
+	l2b_getseq(mi->l2b, r1->tid, r1->te, r2->ts, tseq);
 	qseq = r1->rev? &qseq0[0][r2->qe] : &qseq0[1][qlen - r2->qs];
 
 	mb_seq_rev(ql, qseq);

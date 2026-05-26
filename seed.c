@@ -208,10 +208,62 @@ static void process_batch(void *km, const mb_idx_t *idx, const anchor_aux_t *aux
 	}
 }
 
+static void mb_anchor_split_meth(void *km, const l2b_t *l2b, int32_t min_len, int32_t qlen, const uint8_t *qseq0, l2b_meth_t mt, mb_anchor_v *v)
+{
+	int64_t i, m_a = v->n * 2, n_a = 0;
+	int32_t max_len = 0;
+	mb_anchor_t *a;
+	uint8_t *tseq, *qseq2[2];
+
+	for (i = 0; i < v->n; ++i)
+		if (max_len < v->a[i].len)
+			max_len = v->a[i].len;
+	tseq = Kmalloc(km, uint8_t, max_len + qlen * 2);
+	qseq2[0] = tseq + max_len;
+	qseq2[1] = qseq2[0] + qlen;
+	memcpy(qseq2[0], qseq0, qlen);
+	for (i = 0; i < qlen; ++i)
+		qseq2[1][qlen - 1 - i] = qseq0[i] > 3? 4 : 3 - qseq0[i];
+
+	a = Kmalloc(km, mb_anchor_t, m_a);
+	for (i = 0; i < v->n; ++i) {
+		mb_anchor_t *p, *q = &v->a[i];
+		const l2b_ctg_t *ctg = &l2b->ctg[q->sid>>1];
+		int32_t rev = q->sid&1;
+		int64_t tpos = q->tpos - (ctg->off * 2 + ctg->len * rev); // NB: requiring concatenated ::tpos!!
+		int64_t ts = tpos + 1 - q->len;
+		int32_t qs = q->qpos + 1 - q->len;
+		int32_t j, j0;
+		uint8_t no_t, no_q;
+		const uint8_t *qseq = qseq2[rev] + qs;
+		l2b_getseq(l2b, q->sid>>1, ts, ts + q->len, tseq);
+		no_t = mt == L2B_METH_C2T? 3 : 0;
+		no_q = mt == L2B_METH_C2T? 1 : 2;
+		for (j0 = j = 0; j <= q->len; ++j) {
+			if (j == q->len || tseq[j] == 4 || qseq[j] == 4 || (tseq[j] != qseq[j] && !(tseq[j] == no_q && qseq[j] == no_t))) {
+				if (j - j0 >= min_len) {
+					Kgrow(km, mb_anchor_t, a, n_a, m_a);
+					p = &a[n_a++];
+					*p = *q;
+					p->len = j - j0;
+					p->qpos = q->qpos - (q->len - j);
+					p->tpos = q->tpos - (q->len - j);
+				}
+				j0 = j + 1;
+			}
+		}
+	}
+	kfree(km, tseq);
+	Kgrow(km, mb_anchor_t, v->a, n_a, v->m);
+	memcpy(v->a, a, n_a * sizeof(mb_anchor_t));
+	v->n = n_a;
+	kfree(km, a);
+}
+
 /* Converting seed intervals to anchors. This function batches small SA
  * intervals and calls mb_bwt_sa_batch() in process_batch(). With prefetch, the
  * strategy noticeably improves the performance. */
-void mb_anchor(void *km, const mb_idx_t *idx, mb_sai_v *u, int32_t qlen, l2b_meth_t mt, int32_t max_occ, mb_anchor_v *v)
+void mb_anchor(void *km, const mb_idx_t *idx, mb_sai_v *u, int32_t min_len, int32_t qlen, const uint8_t *qseq, l2b_meth_t mt, int32_t max_occ, mb_anchor_v *v)
 {
 	const int batch_size = 20;
 	int32_t n_aux, m, m_a;
@@ -264,6 +316,9 @@ void mb_anchor(void *km, const mb_idx_t *idx, mb_sai_v *u, int32_t qlen, l2b_met
 	kfree(km, b);
 	kfree(km, a);
 	kfree(km, aux);
+
+	if (mt != L2B_METH_NONE && v->n > 0)
+		mb_anchor_split_meth(km, idx->l2b, min_len, qlen, qseq, mt, v);
 
 	radix_sort_mb_anchor(v->a, v->a + v->n);
 	for (i = 0; i < v->n; ++i) { // adjust mb_anchor_t::tpos

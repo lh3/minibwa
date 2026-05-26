@@ -206,8 +206,10 @@ static void mb_pair_hits(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_
 	kfree(km, pa);
 }
 
-static int32_t mb_ungap(void *km, int32_t qlen, const uint8_t *qseq, int32_t tlen, const uint8_t *tseq, int32_t kmer, int32_t *max_i, int32_t *n_good, int32_t *n_kmer)
+static int32_t mb_ungap(void *km, int32_t qlen, const uint8_t *qseq, int32_t tlen, const uint8_t *tseq, int32_t kmer, l2b_meth_t mt, int32_t *max_i, int32_t *n_good, int32_t *n_kmer)
 { // a linear algorithm to find ungapped alignment
+	static uint8_t c2t[5] = { 0, 3, 2, 3, 4 };
+	static uint8_t g2a[5] = { 0, 1, 0, 3, 4 };
 	int32_t i, l, cap = 1 << kmer*2, mask = cap - 1, max, *a;
 	uint16_t *h, x;
 	*max_i = -1, *n_good = *n_kmer = 0;
@@ -216,7 +218,8 @@ static int32_t mb_ungap(void *km, int32_t qlen, const uint8_t *qseq, int32_t tle
 	h = Kcalloc(km, uint16_t, cap);
 	for (i = l = 0, x = 0; i < qlen; ++i) {
 		if (qseq[i] < 4) {
-			x = (x << 2 | qseq[i]) & mask;
+			uint8_t c = mt == L2B_METH_C2T? c2t[qseq[i]] : mt == L2B_METH_G2A? g2a[qseq[i]] : qseq[i];
+			x = (x << 2 | c) & mask;
 			if (++l >= kmer) {
 				if (h[x] == 0) ++*n_kmer; // n_kmer is the number of distinct k-mers on the query sequence
 				h[x] = i;
@@ -225,7 +228,8 @@ static int32_t mb_ungap(void *km, int32_t qlen, const uint8_t *qseq, int32_t tle
 	}
 	for (i = l = 0, x = 0; i < tlen; ++i) {
 		if (tseq[i] < 4) {
-			x = (x << 2 | tseq[i]) & mask;
+			uint8_t c = mt == L2B_METH_C2T? c2t[tseq[i]] : mt == L2B_METH_G2A? g2a[tseq[i]] : tseq[i];
+			x = (x << 2 | c) & mask;
 			if (++l >= kmer) {
 				if (h[x] > 0 && i >= h[x])
 					++a[i - h[x]]; // inspired by the Hough transform for line finding
@@ -242,7 +246,7 @@ static int32_t mb_ungap(void *km, int32_t qlen, const uint8_t *qseq, int32_t tle
 	return max;
 }
 
-static void mb_matesw_align(void *km, const mb_opt_t *opt, int32_t qlen, uint8_t *qseq, int32_t tlen, uint8_t *tseq, mb_hit_t *h, int32_t min_sc, ksw_extz_t *ez)
+static void mb_matesw_align(void *km, const mb_opt_t *opt, int32_t qlen, uint8_t *qseq, int32_t tlen, uint8_t *tseq, mb_hit_t *h, int32_t min_sc, l2b_meth_t mt, ksw_extz_t *ez)
 {
 	int8_t mat[25];
 	int32_t max_sc = qlen < tlen? qlen : tlen;
@@ -257,7 +261,7 @@ static void mb_matesw_align(void *km, const mb_opt_t *opt, int32_t qlen, uint8_t
 
 	memset(h, 0, sizeof(*h));
 	if (max_sc >= 32767) return;
-	ksw_gen_nt4_mat(mat, 1, b_mm, b_ts, b_ambi);
+	ksw_gen_nt4_mat(mat, 1, b_mm, b_ts, b_ambi, (int)mt);
 	sz = max_sc < 255 - b_mm? 1 : 2;
 	qp = ksw_ll_qinit(km, sz, qlen, qseq, 5, mat);
 	xtra = KSW_LL_SUBO | opt->min_len;
@@ -275,11 +279,12 @@ static void mb_matesw_align(void *km, const mb_opt_t *opt, int32_t qlen, uint8_t
 	}
 	kfree(km, qp);
 	if (rst.score >= opt->min_dp_max && rst.score >= min_sc) { // min_sc is already divided by opt->a
-		int32_t te = rst.te + 1, qe = rst.qe + 1;
+		int32_t te = rst.te + 1, qe = rst.qe + 1, ksw_flag = KSW_EZ_EXTZ_ONLY|KSW_EZ_RIGHT|KSW_EZ_REV_CIGAR;
 		mb_seq_rev(qe, qseq);
 		mb_seq_rev(te, tseq);
-		ksw_gen_nt4_mat(mat, opt->a, opt->b, opt->b_ts, opt->b_ambi);
-		ksw_extz2_sse(km, qe, qseq, te, tseq, 5, mat, opt->q, opt->e, opt->bw, opt->zdrop, opt->end_bonus, KSW_EZ_EXTZ_ONLY|KSW_EZ_RIGHT|KSW_EZ_REV_CIGAR, ez);
+		ksw_gen_nt4_mat(mat, opt->a, opt->b, opt->b_ts, opt->b_ambi, (int)mt);
+		if (mt != L2B_METH_NONE) ksw_flag |= KSW_EZ_GENERIC_SC;
+		ksw_extz2_sse(km, qe, qseq, te, tseq, 5, mat, opt->q, opt->e, opt->bw, opt->zdrop, opt->end_bonus, ksw_flag, ez);
 		mb_seq_rev(qe, qseq);
 		mb_seq_rev(te, tseq);
 		if (ez->n_cigar > 0 && ez->max >= opt->min_dp_max * opt->a) {
@@ -342,8 +347,8 @@ static const mb_hit_t *mb_matesw_core(void *km, const mb_opt_t *opt, const l2b_t
 			ht.p = 0;
 			ref = Kmalloc(km, uint8_t, te - ts);
 			if (is_rev) mt = l2b_meth_rev(mt0);
-			l2b_getseq_meth(l2b, h0->tid, ts, te, mt, ref);
-			max_ug = mb_ungap(km, len, seq[is_rev], te - ts, ref, 7, &max_i, &n_good, &n_kmer);
+			l2b_getseq(l2b, h0->tid, ts, te, ref);
+			max_ug = mb_ungap(km, len, seq[is_rev], te - ts, ref, 7, mt, &max_i, &n_good, &n_kmer);
 			if (max_ug >= 10 && max_ug >= len>>1 && n_good == 1) {
 				ts2 = ts + max_i - len / 2;
 				te2 = ts2 + len * 2;
@@ -351,7 +356,7 @@ static const mb_hit_t *mb_matesw_core(void *km, const mb_opt_t *opt, const l2b_t
 				if (te2 > te) te2 = te;
 			}
 			if (max_ug >= 10 || max_ug >= n_kmer * 0.33)
-				mb_matesw_align(km, opt, len, seq[is_rev], te2 - ts2, &ref[ts2 - ts], &ht, min_sc, ez);
+				mb_matesw_align(km, opt, len, seq[is_rev], te2 - ts2, &ref[ts2 - ts], &ht, min_sc, mt, ez);
 			if (ht.p) { // a good hit found
 				ht.tid = h0->tid;
 				ht.ts += ts2, ht.te += ts2;
@@ -420,12 +425,6 @@ static int32_t mb_matesw(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_
 			qs[r][0][i] = c;
 			qs[r][1][qlen[r] - 1 - i] = c < 4? 3 - c : 4;
 		}
-	}
-	if (opt->flag & MB_F_METH) {
-		l2b_meth_convert(L2B_METH_C2T, qlen[0], qs[0][0]);
-		l2b_meth_convert(L2B_METH_G2A, qlen[0], qs[0][1]);
-		l2b_meth_convert(L2B_METH_G2A, qlen[1], qs[1][0]);
-		l2b_meth_convert(L2B_METH_C2T, qlen[1], qs[1][1]);
 	}
 	min_sc[0] = mb_hit_sum_score(km, n_hit[0], hit[0]) / opt->a - opt->pen_unpair;
 	min_sc[1] = mb_hit_sum_score(km, n_hit[1], hit[1]) / opt->a - opt->pen_unpair;

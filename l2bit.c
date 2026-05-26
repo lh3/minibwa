@@ -48,7 +48,7 @@ int64_t l2b_intv2cid_meth(const l2b_t *l2b, uint64_t st, uint64_t en, l2b_meth_t
 	return s < 0? -2 : l2b_pos2cid(l2b, s, len, cst);
 }
 
-int64_t l2b_getseq(const l2b_t *l2b, int64_t tid, int64_t st, int64_t en, uint8_t *seq) // TODO: ambiguous bases
+int64_t l2b_getseq(const l2b_t *l2b, int64_t tid, int64_t st, int64_t en, uint8_t *seq)
 {
 	const l2b_ctg_t *ctg;
 	int64_t i, aid;
@@ -73,21 +73,6 @@ int64_t l2b_getseq(const l2b_t *l2b, int64_t tid, int64_t st, int64_t en, uint8_
 		}
 	}
 	return en - st;
-}
-
-int64_t l2b_getseq_meth(const l2b_t *l2b, int64_t tid, int64_t st, int64_t en, l2b_meth_t mt, uint8_t *seq)
-{
-	int64_t i, len;
-	len = l2b_getseq(l2b, tid, st, en, seq);
-	if (len <= 0 || mt == L2B_METH_NONE) return len;
-	if (mt == L2B_METH_C2T) {
-		for (i = 0; i < len; ++i)
-			if (seq[i] == 1) seq[i] = 3; // C -> T
-	} else { // L2B_METH_G2A
-		for (i = 0; i < len; ++i)
-			if (seq[i] == 2) seq[i] = 0; // G -> A
-	}
-	return len;
 }
 
 void l2b_meth_convert(l2b_meth_t mt, int64_t len, uint8_t *seq)

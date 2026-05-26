@@ -37,7 +37,6 @@ void l2b_destroy(l2b_t *l2b);
 int64_t l2b_intv2cid(const l2b_t *l2b, uint64_t st, uint64_t en, int64_t *cst, int *rev);
 int64_t l2b_intv2cid_meth(const l2b_t *l2b, uint64_t st, uint64_t en, l2b_meth_t *mt, int64_t *cst, int *rev);
 int64_t l2b_getseq(const l2b_t *l2b, int64_t tid, int64_t st, int64_t en, uint8_t *seq);
-int64_t l2b_getseq_meth(const l2b_t *l2b, int64_t tid, int64_t st, int64_t en, l2b_meth_t mt, uint8_t *seq);
 int64_t l2b_getambi(const l2b_t *l2b, int64_t tid, int64_t st, int64_t en, int32_t *n_ambi);
 void l2b_meth_convert(l2b_meth_t mt, int64_t len, uint8_t *seq);
 

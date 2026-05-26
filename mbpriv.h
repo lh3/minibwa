@@ -26,7 +26,7 @@ struct mb_idx_s {
 typedef struct {
 	int32_t sid; // tid<<1|rev
 	int32_t len; // length of the anchor
-	int32_t qpos; // the query coordinate of the last base in the anchor; the start base is qpos+1-len
+	int32_t qpos; // the query coordinate of the last base in the anchor; the start base is qpos+1-len; flipped by rev
 	uint32_t flag:31, flt:1;
 	int64_t tpos; // target/contig coordinate
 } mb_anchor_t;
@@ -55,7 +55,7 @@ void mb_bwtgen(const char *fn_pac, const char *fn_bwt, int block_size);
 // defined in seed.c
 void mb_seed_intv(void *km, const mb_bwt_t *bwt, int32_t len, const uint8_t *seq, int32_t min_len, int32_t max_sub_occ, mb_sai_v *v);
 void mb_seed_intv_batch(void *km, const mb_bwt_t *bwt, int32_t n_seq, const int32_t *len, uint8_t *const* seq, int32_t min_len, int32_t max_sub_occ, mb_sai_v *v);
-void mb_anchor(void *km, const mb_idx_t *idx, mb_sai_v *u, int32_t qlen, l2b_meth_t mt, int32_t max_occ, mb_anchor_v *v);
+void mb_anchor(void *km, const mb_idx_t *idx, mb_sai_v *u, int32_t min_len, int32_t qlen, const uint8_t *qseq, l2b_meth_t mt, int32_t max_occ, mb_anchor_v *v);
 void mb_anchor_sort(const l2b_t *l2b, int64_t n_a, mb_anchor_t *a);
 
 // defined in lchain.c
