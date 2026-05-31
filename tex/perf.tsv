@@ -24,9 +24,11 @@ SBX	minimap2	82.27	13.36
 SBX	strobealign	114.71	89.75
 HiFi	minibwa	117.57	14.87
 HiFi	minimap2	77.04	24.97
+HiFi	rammap	84.78	17.62
 HiFi	winnowmap2	7.76	23.87
 ONT	minibwa	103.03	16.22
 ONT	minimap2	83.76	25.78
+ONT	rammap	88.67	17.00
 ONT	winnowmap2	7.95	30.52
 BS-seq	bismark	3.50	0
 BS-seq	biscuit	12.89	24.64

@@ -26,7 +26,7 @@ plot "<cat perf.tsv|grep WGS" using 3:xtic(2) ti "WGS" ls 2, \
 
 # Long reads
 set origin 0.95,0.8
-set size 0.5,0.8
+set size 0.6,0.8
 unset ylab
 set key top right
 plot "<cat perf.tsv|grep HiFi" using 3:xtic(2) ti "HiFi" ls 1, \
@@ -34,8 +34,8 @@ plot "<cat perf.tsv|grep HiFi" using 3:xtic(2) ti "HiFi" ls 1, \
 
 # Meth reads
 set style histogram cluster gap 1
-set origin 1.4,0.8
-set size 0.5,0.8
+set origin 1.5,0.8
+set size 0.4,0.8
 plot "<cat perf.tsv|grep BS-seq" using 3:xtic(2) ti "BS-seq" ls 6
 
 # Bottom row: memory
@@ -53,15 +53,15 @@ plot "<cat perf.tsv|grep WGS" using 4:xtic(2) ti "WGS" ls 2, \
 # Long reads
 unset ylab
 set key top right
-set size 0.5,0.8
 set origin 0.95,0
+set size 0.6,0.8
 plot "<cat perf.tsv|grep HiFi" using 4:xtic(2) ti "HiFi" ls 1, \
 	"<cat perf.tsv|grep ONT" using 4 ti "ONT" ls 5 lc "#d95f0e"
 
 # Meth reads
 set style histogram cluster gap 1
-set size 0.5,0.8
-set origin 1.4,0
+set origin 1.5,0
+set size 0.4,0.8
 plot "<cat perf.tsv|grep BS-seq" using 4:xtic(2) ti "BS-seq" ls 6
 
 unset multiplot

@@ -180,7 +180,7 @@ Pairing   & BWA-MEM  & Ungapped fast path \\
 \end{table}
 
 For the completeness of the method section, we will describe the basic theory on FM-index in brief.
-Additional technical details and explanation can be found in \citet{Li:2024ac}.
+Additional theoretical background can be found in \citet{Li:2024ac}.
 Note that the original BWA paper~\citep{Li:2009uq} used closed intervals but here we adopt half-closed-half-open intervals for consistency with our recent work.
 
 \subsection{Definitions}
@@ -425,7 +425,7 @@ and uses the minimap2 algorithm to close gaps between seeds or extends the first
 Minibwa first tries ungapped alignment.
 If that alignment contains many mismatches, minibwa falls back to SIMD-based dynamic programming (DP) with dual-gap penalty~\citep{Suzuki:2018aa}.
 For WGS short reads, the DP step is the performance bottleneck, taking $\sim$35\% of total CPU time.
-Minibwa uses SSE4.1 intrinsics on x86 CPUs and NEON intrinsics on ARM CPUs.
+Minibwa uses SSE4.1 intrinsics on x86 CPUs or NEON intrinsics on ARM CPUs.
 We experimented an AVX2-based implementation but did not see clear improvement.
 
 In comparison, BWA-MEM uses a heuristic chaining algorithm that is less accurate and does not work well for long reads.
@@ -495,6 +495,7 @@ measured the performance on real data.
 We tested BWA-MEM v0.7.19~\citep{Li:2013aa}, BWA-MEM2 v2.2.1~\citep{DBLP:conf/ipps/VasimuddinMLA19},
 BWA-MEM3 v0.2.1 (\url{https://github.com/fg-labs/bwa-mem3}),
 Bowtie2 v2.5.5~\citep{Langmead:2012fk}, minimap2 v2.30~\citep{Li:2018ab} and strobealign v0.17.0~\citep{Sahlin:2022aa} for short reads,
+rammap v1.0~\citep{Wang2026.05.26.726289} and
 Winnowmap2 v2.03~\citep{Jain:2020aa,Jain:2022ua} for long reads
 and BISCUIT v1.8.1~\citep{Zhou:2024ac}, Bismark v0.25.1~\citep{Krueger:2011aa}
 and BWA-Meth v0.2.9~\citep{Pedersen:2014aa} for BS-seq reads.
@@ -567,6 +568,7 @@ For standard WGS short reads, strobealign is the fastest.
 BWA-MEM2 is 67\% faster than BWA-MEM and both BWA-MEME and BWA-MEM3 are even faster (Fig.~\ref{fig:perf}a).
 Minibwa is about four times as fast as BWA-MEM and more than twice as fast as BWA-MEM2.
 The speed advantage of minibwa over BWA-MEM2 narrows on Hi-C and SBX data where mate rescue is disabled.
+Here, the N50 read length of this duplex SBX dataset is 243 bp, not much longer than the rest of short reads.
 For long reads, minibwa is a little faster than minimap2 and both are an order of magnitude faster than Winnowmap2.
 For BS-seq data, minibwa is a few times faster than BWA-Meth and BISCUIT and over 10 times faster than Bismark.
 Across all six datasets, minibwa uses $<$20 GB memory at the peak, lower than most aligners except Bowtie2.
