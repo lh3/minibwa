@@ -24,11 +24,6 @@ ifeq ($(omp),1)
 	LIBS+=-fopenmp
 endif
 
-ifneq ($(gpl),0)
-	AOBJS+=QSufSort.o bwtgen.o
-	CPPFLAGS+=-DUSE_GPL
-endif
-
 ifeq ($(mimalloc),0)
 	MALLOC_O=
 	CPPFLAGS+=-DHAVE_KALLOC
