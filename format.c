@@ -41,7 +41,12 @@ static void write_meth_tags(kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t,
 	int64_t fetch_en = r->te + 2 <= tlen ? r->te + 2 : tlen;
 	uint8_t *ref = (uint8_t*)kom_malloc(uint8_t, fetch_en - fetch_st);
 	char *xm = (char*)kom_malloc(char, qlen + 1);
-	int seq_pos = r->qs;
+	/* XM is written in SAM SEQ orientation, so the first aligned base lands
+	 * at the SAM leading soft-clip offset. That offset is r->qs for forward
+	 * reads but qlen - r->qe for reverse reads (see clip_len[0] in mb_fmt_sam);
+	 * r->qs/r->qe are in original-read coordinates. Using r->qs unconditionally
+	 * mis-frames reverse reads with asymmetric clipping. */
+	int seq_pos = r->rev ? (int)(qlen - r->qe) : r->qs;
 	int64_t ref_pos = r->ts;
 	uint32_t k;
 	int j;
