@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <stdio.h>
+#include "libsais.h"
 #include "libsais64.h"
 #include "kommon.h"
 #include "ketopt.h"
@@ -17,17 +18,41 @@ static ko_longopt_t long_opts[] = { // common long options shared across all ind
 static inline uint8_t l2b_c2t(uint8_t b) { return b == 1? 3 : b; } // C(1) -> T(3)
 static inline uint8_t l2b_g2a(uint8_t b) { return b == 2? 0 : b; } // G(2) -> A(0)
 
+// invert the suffix array a[] (32- or 64-bit) to the BWT in seq[], sample the SSA and drop the primary ($); return the primary
+static int64_t sa_to_bwt(void *a, int use_int32, uint8_t *seq, int64_t len, int sa_bit, uint64_t *ssa)
+{
+	int32_t *a32 = a;
+	int64_t *a64 = a, i, primary = -1;
+	uint64_t mask = (1ULL<<sa_bit) - 1;
+	for (i = 0; i <= len; ++i) {
+		int64_t v = use_int32? a32[i] : a64[i];
+		if ((i & mask) == 0) ssa[i>>sa_bit] = v;
+		if (v == 0) primary = i;
+		else if (use_int32) a32[i] = seq[v - 1];
+		else a64[i] = seq[v - 1];
+	}
+	ssa[0] = (uint64_t)-1;
+	for (i = 0; i < primary; ++i) seq[i] = use_int32? a32[i] : a64[i];
+	for (; i < len; ++i) seq[i] = use_int32? a32[i+1] : a64[i+1];
+	return primary;
+}
+
 static mb_bwt_t *mb_bwt_libsais(const l2b_t *l2b, int sa_bit, int both_strand, int is_meth, int n_thread)
 {
 	const int fs = 10000;
 	uint8_t *seq;
-	int64_t i, j, *a, primary, len;
+	int64_t i, j, primary, len;
 	mb_bwt_t *bwt;
-	uint64_t *ssa, n_ssa, mask;
+	uint64_t *ssa, n_ssa;
+	void *a;
+	int use_int32;
 
 	len = l2b->tot_len * (is_meth? 2 : 1) * (both_strand? 2 : 1);
+	// use a 32-bit suffix array (half the memory) when the concatenated length fits in int32_t
+	use_int32 = (len + fs + 1 <= INT32_MAX);
 	seq = kom_malloc(uint8_t, len);
-	a = kom_malloc(int64_t, len + fs + 1);
+	if (use_int32) a = kom_malloc(int32_t, len + fs + 1);
+	else a = kom_malloc(int64_t, len + fs + 1);
 	if (is_meth) {
 		// c2t forward
 		for (i = 0, j = 0; i < l2b->tot_len; ++i, ++j)
@@ -50,28 +75,28 @@ static mb_bwt_t *mb_bwt_libsais(const l2b_t *l2b, int sa_bit, int both_strand, i
 			for (i = l2b->tot_len - 1; i >= 0; --i, ++j)
 				seq[j] = 3 - l2b_get0(l2b, i);
 	}
+	if (use_int32) {
+		int32_t *a32 = a;
 #ifdef LIBSAIS_OPENMP
-    libsais64_omp(seq, a + 1, len, fs, 0, n_thread);
+		libsais_omp(seq, a32 + 1, (int32_t)len, fs, 0, n_thread);
 #else
-    libsais64(seq, a + 1, len, fs, 0);
+		libsais(seq, a32 + 1, (int32_t)len, fs, 0);
 #endif
-	a[0] = len; // libsais doesn't write a[0], which always equals to len
+		a32[0] = (int32_t)len; // libsais doesn't write a[0], which always equals to len
+	} else {
+		int64_t *a64 = a;
+#ifdef LIBSAIS_OPENMP
+		libsais64_omp(seq, a64 + 1, len, fs, 0, n_thread);
+#else
+		libsais64(seq, a64 + 1, len, fs, 0);
+#endif
+		a64[0] = len;
+	}
 
 	n_ssa = (len + (1<<sa_bit)) >> sa_bit;
 	ssa = kom_calloc(uint64_t, n_ssa);
-	mask = (1<<sa_bit) - 1;
-	for (i = 0; i <= len; ++i)
-		if ((i & mask) == 0)
-			ssa[i >> sa_bit] = a[i];
-	ssa[0] = (uint64_t)-1;
-	primary = (uint64_t)-1;
-	for (i = 0; i <= len; ++i) {
-		if (a[i] == 0) primary = i;
-		else a[i] = seq[a[i] - 1];
-	}
-	assert(primary != (uint64_t)-1);
-	for (i = 0; i < primary; ++i) seq[i] = a[i];
-	for (; i < len; ++i) seq[i] = a[i + 1];
+	primary = sa_to_bwt(a, use_int32, seq, len, sa_bit, ssa);
+	assert(primary != -1);
 	free(a);
 	bwt = mb_bwt_init_from_raw(1, seq, len, primary);
 	bwt->sa_bit = sa_bit, bwt->n_sa = n_ssa, bwt->sa = ssa;
