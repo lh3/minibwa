@@ -79,7 +79,7 @@ By default, minibwa dynamically changes multiple internal parameters based on
 individual read lengths. It works for both short and accurate long reads.
 ```sh
 minibwa map -t8 ref.fa read1.fq read2.fq    # map paired-end reads and output SAM
-minibwa map -t8 ref.fa read.fa.gz           # map single-end or long reads
+minibwa map -ft8 ref.fa read.fa.gz          # map single-end or long reads; output PAF
 minibwa map --hic ref.fa hic1.fq hic2.fq    # map Hi-C short reads
 minibwa map --meth ref.fa read1.fq read2.fq # map BS-seq reads; requiring "index --meth"
 ```
