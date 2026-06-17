@@ -23,6 +23,7 @@
 #define MB_F_PRIMARY5         (0x8000LL)
 #define MB_F_NO_PAIRING       (0x10000LL)
 #define MB_F_METH             (0x20000LL)   // methylation mode
+#define MB_F_XA               (0x40000LL)   // write XA:Z
 
 #define MB_CIGAR_MATCH      0
 #define MB_CIGAR_INS        1

@@ -192,7 +192,7 @@ static void write_sam_cigar(kstring_t *s, int sam_flag, int in_tag, int qlen, co
 	}
 }
 
-void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, int32_t n_seg, const int32_t *n_hit, mb_hit_t *const*hit, int32_t hit_idx, int64_t opt_flag, int seg_idx, int32_t mate_qlen)
+void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, int32_t n_seg, const int32_t *n_hit, mb_hit_t *const*hit, int32_t hit_idx, int64_t opt_flag, int seg_idx, int32_t mate_qlen, int xa_tag)
 {
 	int flag, n_h = n_hit[seg_idx];
 	int this_tid = -1, this_pos = -1;
@@ -206,9 +206,6 @@ void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, i
 		int next_sid = (seg_idx + 1) % n_seg;
 		r_prev = r_next = get_sam_pri(n_hit[next_sid], hit[next_sid]);
 	} else r_prev = r_next = NULL;
-
-	// write QNAME and FLAG
-	kom_sprintf_lite(s, "%s", t->name);
 	flag = n_seg > 1? 0x1 : 0x0;
 	if (r == 0) {
 		flag |= 0x4;
@@ -224,114 +221,127 @@ void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, i
 		if (r_next == NULL) flag |= 0x8;
 		else if (r_next->rev) flag |= 0x20;
 	}
-	kom_sprintf_lite(s, "\t%d", flag);
-
-	// write coordinate, MAPQ and CIGAR
-	if (r == 0) {
-		if (r_prev) {
-			this_tid = r_prev->tid, this_pos = r_prev->ts;
-			kom_sprintf_lite(s, "\t%s\t%d\t0\t*", l2b->ctg[this_tid].name, this_pos+1);
-		} else kom_sprintf_lite(s, "\t*\t0\t0\t*");
-	} else {
-		this_tid = r->tid, this_pos = r->ts;
-		kom_sprintf_lite(s, "\t%s\t%d\t%d\t", l2b->ctg[r->tid].name, r->ts+1, r->mapq);
+	if (xa_tag && !(flag & 0x4) && hit_idx) {
+		kom_sprintf_lite(s, "%s,%c%d,", l2b->ctg[r->tid].name, "+-"[r->rev], r->ts+1);
 		write_sam_cigar(s, flag, 0, t->l_seq, r, opt_flag);
-	}
-
-	// write mate positions
-	if (n_seg > 1) {
-		int tlen = 0;
-		if (this_tid >= 0 && r_next) {
-			if (this_tid == r_next->tid) {
-				if (r) {
-					int this_pos5 = r->rev? r->te - 1 : this_pos;
-					int next_pos5 = r_next->rev? r_next->te - 1 : r_next->ts;
-					tlen = next_pos5 - this_pos5;
-				}
-				kom_sprintf_lite(s, "\t=\t");
-			} else kom_sprintf_lite(s, "\t%s\t", l2b->ctg[r_next->tid].name);
-			kom_sprintf_lite(s, "%d\t", r_next->ts + 1);
-		} else if (r_next) { // && this_tid < 0
-			kom_sprintf_lite(s, "\t%s\t%d\t", l2b->ctg[r_next->tid].name, r_next->ts + 1);
-		} else if (this_tid >= 0) { // && r_next == NULL
-			kom_sprintf_lite(s, "\t=\t%d\t", this_pos + 1); // next segment will take r's coordinate
-		} else kom_sprintf_lite(s, "\t*\t0\t"); // neither has coordinates
-		if (tlen > 0) ++tlen;
-		else if (tlen < 0) --tlen;
-		kom_sprintf_lite(s, "%d\t", tlen);
-	} else kom_sprintf_lite(s, "\t*\t0\t0\t");
-
-	// write SEQ and QUAL
-	if (r == 0) {
-		sam_write_sq(s, t->seq, t->l_seq, 0, 0);
-		kom_sprintf_lite(s, "\t");
-		if (t->qual) sam_write_sq(s, t->qual, t->l_seq, 0, 0);
-		else kom_sprintf_lite(s, "*");
+		kom_sprintf_lite(s, ",%d;", r->blen - r->mlen + r->p->n_ambi);
 	} else {
-		if ((flag & 0x900) == 0 || (opt_flag & MB_F_SUPP_SOFT)) {
-			sam_write_sq(s, t->seq, t->l_seq, r->rev, r->rev);
-			kom_sprintf_lite(s, "\t");
-			if (t->qual) sam_write_sq(s, t->qual, t->l_seq, r->rev, 0);
-			else kom_sprintf_lite(s, "*");
-		} else if ((flag & 0x100) && !(opt_flag & MB_F_2ND_SEQ)){
-			kom_sprintf_lite(s, "*\t*");
-		} else {
-			sam_write_sq(s, t->seq + r->qs, r->qe - r->qs, r->rev, r->rev);
-			kom_sprintf_lite(s, "\t");
-			if (t->qual) sam_write_sq(s, t->qual + r->qs, r->qe - r->qs, r->rev, 0);
-			else kom_sprintf_lite(s, "*");
-		}
-	}
+		// write QNAME and FLAG
+		kom_sprintf_lite(s, "%s", t->name);
+		kom_sprintf_lite(s, "\t%d", flag);
 
-	// write tags
-	if (mb_rg_id[0]) kom_sprintf_lite(s, "\tRG:Z:%s", mb_rg_id);
-	if (n_seg > 2) kom_sprintf_lite(s, "\tFI:i:%d", seg_idx);
-	if (r) {
-		write_tags(s, r);
-		// MC:Z mate CIGAR and MQ:i mate MAPQ; r_next is the mate's primary (see above).
-		if (n_seg > 1 && r_next && r_next->p && r_next->p->n_cigar > 0 && mate_qlen > 0) {
-			kom_sprintf_lite(s, "\tMC:Z:");
-			write_sam_cigar(s, 0, 0, mate_qlen, r_next, opt_flag);
-			kom_sprintf_lite(s, "\tMQ:i:%d", r_next->mapq);
+		// write coordinate, MAPQ and CIGAR
+		if (r == 0) {
+			if (r_prev) {
+				this_tid = r_prev->tid, this_pos = r_prev->ts;
+				kom_sprintf_lite(s, "\t%s\t%d\t0\t*", l2b->ctg[this_tid].name, this_pos+1);
+			} else kom_sprintf_lite(s, "\t*\t0\t0\t*");
+		} else {
+			this_tid = r->tid, this_pos = r->ts;
+			kom_sprintf_lite(s, "\t%s\t%d\t%d\t", l2b->ctg[r->tid].name, r->ts+1, r->mapq);
+			write_sam_cigar(s, flag, 0, t->l_seq, r, opt_flag);
 		}
-		if (r->p->cs) kom_sprintf_lite(s, "\t%s", (char*)&r->p->cigar[r->p->n_cigar]);
-		if (r->parent == r->id && r->p && n_h > 1 && h && r >= h && r - h < n_h) { // supplementary aln may exist
-			int i, n_sa = 0; // n_sa: number of SA fields
-			for (i = 0; i < n_h; ++i)
-				if (i != r - h && h[i].parent == h[i].id && h[i].p)
-					++n_sa;
-			if (n_sa > 0) {
-				kom_sprintf_lite(s, "\tSA:Z:");
-				for (i = 0; i < n_h; ++i) {
-					const mb_hit_t *q = &h[i];
-					int l_M, l_I = 0, l_D = 0, clip5 = 0, clip3 = 0;
-					if (r == q || q->parent != q->id || q->p == 0) continue;
-					if (q->qe - q->qs < q->te - q->ts) l_M = q->qe - q->qs, l_D = (q->te - q->ts) - l_M;
-					else l_M = q->te - q->ts, l_I = (q->qe - q->qs) - l_M;
-					clip5 = q->rev? t->l_seq - q->qe : q->qs;
-					clip3 = q->rev? q->qs : t->l_seq - q->qe;
-					kom_sprintf_lite(s, "%s,%d,%c,", l2b->ctg[q->tid].name, q->ts+1, "+-"[q->rev]);
-					if (clip5) kom_sprintf_lite(s, "%dS", clip5);
-					if (l_M) kom_sprintf_lite(s, "%dM", l_M);
-					if (l_I) kom_sprintf_lite(s, "%dI", l_I);
-					if (l_D) kom_sprintf_lite(s, "%dD", l_D);
-					if (clip3) kom_sprintf_lite(s, "%dS", clip3);
-					kom_sprintf_lite(s, ",%d,%d;", q->mapq, q->blen - q->mlen + q->p->n_ambi);
+
+		// write mate positions
+		if (n_seg > 1) {
+			int tlen = 0;
+			if (this_tid >= 0 && r_next) {
+				if (this_tid == r_next->tid) {
+					if (r) {
+						int this_pos5 = r->rev? r->te - 1 : this_pos;
+						int next_pos5 = r_next->rev? r_next->te - 1 : r_next->ts;
+						tlen = next_pos5 - this_pos5;
+					}
+					kom_sprintf_lite(s, "\t=\t");
+				} else kom_sprintf_lite(s, "\t%s\t", l2b->ctg[r_next->tid].name);
+				kom_sprintf_lite(s, "%d\t", r_next->ts + 1);
+			} else if (r_next) { // && this_tid < 0
+				kom_sprintf_lite(s, "\t%s\t%d\t", l2b->ctg[r_next->tid].name, r_next->ts + 1);
+			} else if (this_tid >= 0) { // && r_next == NULL
+				kom_sprintf_lite(s, "\t=\t%d\t", this_pos + 1); // next segment will take r's coordinate
+			} else kom_sprintf_lite(s, "\t*\t0\t"); // neither has coordinates
+			if (tlen > 0) ++tlen;
+			else if (tlen < 0) --tlen;
+			kom_sprintf_lite(s, "%d\t", tlen);
+		} else kom_sprintf_lite(s, "\t*\t0\t0\t");
+
+		// write SEQ and QUAL
+		if (r == 0) {
+			sam_write_sq(s, t->seq, t->l_seq, 0, 0);
+			kom_sprintf_lite(s, "\t");
+			if (t->qual) sam_write_sq(s, t->qual, t->l_seq, 0, 0);
+			else kom_sprintf_lite(s, "*");
+		} else {
+			if ((flag & 0x900) == 0 || (opt_flag & MB_F_SUPP_SOFT)) {
+				sam_write_sq(s, t->seq, t->l_seq, r->rev, r->rev);
+				kom_sprintf_lite(s, "\t");
+				if (t->qual) sam_write_sq(s, t->qual, t->l_seq, r->rev, 0);
+				else kom_sprintf_lite(s, "*");
+			} else if ((flag & 0x100) && !(opt_flag & MB_F_2ND_SEQ)){
+				kom_sprintf_lite(s, "*\t*");
+			} else {
+				sam_write_sq(s, t->seq + r->qs, r->qe - r->qs, r->rev, r->rev);
+				kom_sprintf_lite(s, "\t");
+				if (t->qual) sam_write_sq(s, t->qual + r->qs, r->qe - r->qs, r->rev, 0);
+				else kom_sprintf_lite(s, "*");
+			}
+		}
+
+		// write tags
+		if (mb_rg_id[0]) kom_sprintf_lite(s, "\tRG:Z:%s", mb_rg_id);
+		if (n_seg > 2) kom_sprintf_lite(s, "\tFI:i:%d", seg_idx);
+		if (r) {
+			write_tags(s, r);
+			// MC:Z mate CIGAR and MQ:i mate MAPQ; r_next is the mate's primary (see above).
+			if (n_seg > 1 && r_next && r_next->p && r_next->p->n_cigar > 0 && mate_qlen > 0) {
+				kom_sprintf_lite(s, "\tMC:Z:");
+				write_sam_cigar(s, 0, 0, mate_qlen, r_next, opt_flag);
+				kom_sprintf_lite(s, "\tMQ:i:%d", r_next->mapq);
+			}
+			if (r->p->cs) kom_sprintf_lite(s, "\t%s", (char*)&r->p->cigar[r->p->n_cigar]);
+			if (r->parent == r->id && r->p && n_h > 1 && h && r >= h && r - h < n_h) { // supplementary aln may exist
+				int i, n_sa = 0; // n_sa: number of SA fields
+				for (i = 0; i < n_h; ++i)
+					if (i != r - h && h[i].parent == h[i].id && h[i].p)
+						++n_sa;
+				if (n_sa > 0) {
+					kom_sprintf_lite(s, "\tSA:Z:");
+					for (i = 0; i < n_h; ++i) {
+						const mb_hit_t *q = &h[i];
+						int l_M, l_I = 0, l_D = 0, clip5 = 0, clip3 = 0;
+						if (r == q || q->parent != q->id || q->p == 0) continue;
+						if (q->qe - q->qs < q->te - q->ts) l_M = q->qe - q->qs, l_D = (q->te - q->ts) - l_M;
+						else l_M = q->te - q->ts, l_I = (q->qe - q->qs) - l_M;
+						clip5 = q->rev? t->l_seq - q->qe : q->qs;
+						clip3 = q->rev? q->qs : t->l_seq - q->qe;
+						kom_sprintf_lite(s, "%s,%d,%c,", l2b->ctg[q->tid].name, q->ts+1, "+-"[q->rev]);
+						if (clip5) kom_sprintf_lite(s, "%dS", clip5);
+						if (l_M) kom_sprintf_lite(s, "%dM", l_M);
+						if (l_I) kom_sprintf_lite(s, "%dI", l_I);
+						if (l_D) kom_sprintf_lite(s, "%dD", l_D);
+						if (clip3) kom_sprintf_lite(s, "%dS", clip3);
+						kom_sprintf_lite(s, ",%d,%d;", q->mapq, q->blen - q->mlen + q->p->n_ambi);
+					}
 				}
 			}
 		}
 	}
-
 	if ((opt_flag & MB_F_COPY_COMMENT) && t->comment)
 		kom_sprintf_lite(s, "\t%s", t->comment);
-	kom_sprintf_lite(s, "\n");
+	if (xa_tag) {
+		if (hit_idx + 1 >= n_h)
+			kom_sprintf_lite(s, "\n");
+		else if (!hit_idx) // append XA here after first hit
+			kom_sprintf_lite(s, "\tXA:Z:");
+	} else
+		kom_sprintf_lite(s, "\n");
 	s->s[s->l] = 0; // we always have room for an extra byte
 }
 
 void mb_format(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, int32_t n_seg, const int32_t *n_hit, mb_hit_t *const*hit, int32_t hit_idx, int64_t opt_flag, int seg_idx, int32_t mate_qlen)
 {
 	if (!(opt_flag & MB_F_PAF))
-		mb_fmt_sam(km, s, l2b, t, n_seg, n_hit, hit, hit_idx, opt_flag, seg_idx, mate_qlen);
+		mb_fmt_sam(km, s, l2b, t, n_seg, n_hit, hit, hit_idx, opt_flag, seg_idx, mate_qlen, !!(opt_flag & MB_F_XA));
 	else
 		mb_fmt_paf(s, l2b, t, hit_idx >= 0? &hit[seg_idx][hit_idx] : 0, opt_flag, n_seg, seg_idx);
 }

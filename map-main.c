@@ -301,6 +301,7 @@ static ko_longopt_t long_options[] = {
 	{ "chain-only",   ko_no_argument,       309 },
 	{ "meth",         ko_no_argument,       310 },
 	{ "hic",          ko_no_argument,       311 },
+	{ "xa",           ko_no_argument,       312 },
 	{ "dbg-aln-seq",  ko_no_argument,       601 },
 	{ "dbg-anchor",   ko_no_argument,       602 },
 	{ "dbg-seed",     ko_no_argument,       603 },
@@ -347,6 +348,7 @@ static int usage(FILE *fp, const mb_opt_t *opt)
 	fprintf(fp, "  Input/Output:\n");
 	fprintf(fp, "    -o FILE          output file name [stdout]\n");
 	fprintf(fp, "    -u               don't output unmapped reads\n");
+	fprintf(fp, "    --xa             output XA tag instead of secondary alignment lines\n");
 	fprintf(fp, "    --outn=INT       output up to INT secondary alignments [0]\n");
 	fprintf(fp, "    -y               copy FASTA/Q comments to output\n");
 	fprintf(fp, "    -Y               use soft clipping for supplementary alignments\n");
@@ -415,6 +417,7 @@ int main_map(int argc, char *argv[])
 		else if (c == 'Y') mo.flag |= MB_F_SUPP_SOFT;
 		else if (c == '5') mo.flag |= MB_F_PRIMARY5;
 		else if (c == 'P') mo.flag |= MB_F_NO_PAIRING;
+		else if (c == 312) mo.flag |= MB_F_XA;
 		else if (c == 's') mo.min_dp_max = atoi(o.arg);
 		else if (c == 'o') fn_out = o.arg;
 		else if (c == 't') mo.n_thread = atoi(o.arg);
