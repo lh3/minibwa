@@ -47,7 +47,7 @@ endif
 all:$(PROG)
 
 mimalloc.o:
-		$(CC) -c -std=gnu99 -O3 -Wall -Wextra -DNDEBUG -DMI_MALLOC_OVERRIDE -DMI_OSX_INTERPOSE=1 -DMI_OSX_ZONE=1 -Imimalloc mimalloc/static.c -o $@
+		$(CC) -c -std=gnu11 -O3 -Wall -Wextra -DNDEBUG -DMI_MALLOC_OVERRIDE -DMI_OSX_INTERPOSE=1 -DMI_OSX_ZONE=1 -Imimalloc mimalloc/static.c -o $@
 
 libminibwa.a:$(LOBJS)
 		$(AR) -csru $@ $(LOBJS)
