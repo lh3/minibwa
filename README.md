@@ -11,7 +11,7 @@ cd minibwa && make
 ./minibwa map chrM-human test/chrM-read_?.fa.gz > aln.sam     # align and output in SAM
 
 # other examples without test data
-minibwa map -t16 ref.index long-read.fq > aln.paf             # align long reads
+minibwa map -ft16 ref.index long-read.fq > aln.paf            # align long reads
 minibwa map --hic ref.index reads.interleaved.fq > aln.sam    # align Hi-C short reads
 
 # align *directional* bisulfite sequencing (BS-seq) reads
