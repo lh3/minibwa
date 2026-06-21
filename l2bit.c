@@ -9,16 +9,17 @@ KSEQ_INIT(gzFile, gzread);
 static int64_t l2b_pos2cid(const l2b_t *l2b, int64_t s, int64_t len, int64_t *cst)
 {
 	int64_t lo = 0, hi = l2b->n_ctg, mid;
-	const l2b_ctg_t *ctg = 0;
 	while (lo < hi) {
+		const l2b_ctg_t *ctg;
 		mid = (lo + hi) / 2;
 		ctg = &l2b->ctg[mid];
-		if (ctg->off <= s && s < ctg->off + ctg->len) break;
-		else if (s < ctg->off) hi = mid;
-		else lo = mid;
+		if (ctg->off <= s && s < ctg->off + ctg->len) {
+			*cst = s - ctg->off;
+			return s + len <= ctg->off + ctg->len? mid : -1;
+		} else if (s < ctg->off) hi = mid;
+		else lo = mid + 1;
 	}
-	*cst = s - ctg->off;
-	return s + len <= ctg->off + ctg->len? mid : -1;
+	return -1; // s is in no contig
 }
 
 int64_t l2b_intv2cid(const l2b_t *l2b, uint64_t st, uint64_t en, int64_t *cst, int *rev)
