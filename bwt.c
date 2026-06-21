@@ -73,6 +73,7 @@ mb_bwt_t *mb_bwt_init_from_raw(int is_byte, const void *raw_, uint64_t len, uint
 	bwt->seq_len = len;
 	bwt->data_len = mb_bwt_data_len(len);
 	bwt->data = kom_calloc(uint64_t, bwt->data_len);
+	if (len == 0) return bwt; // nothing to encode; avoid the last-block overflow
 
 	memset(c, 0, 32);
 	for (i = k = 0; i < len; ++i) {
