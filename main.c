@@ -1,12 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include <zlib.h>
 #include "kommon.h"
 #include "mbpriv.h"
 #include "ketopt.h"
-#include "kseq.h"
-//KSEQ_INIT(gzFile, gzread)
 
 int main_index(int argc, char *argv[]);
 int main_map(int argc, char *argv[]);
@@ -17,6 +16,7 @@ int main_genraw(int argc, char *argv[]);
 int main_genbwt(int argc, char *argv[]);
 int main_gensa(int argc, char *argv[]);
 
+int main_getref(int argc, char *argv[]);
 int main_fastmap(int argc, char *argv[]);
 int main_bench(int argc, char *argv[]);
 
@@ -38,6 +38,7 @@ static int usage(FILE *fp, int is_long)
 		fprintf(fp, "  Debugging:\n");
 		fprintf(fp, "    bench      performance evaluation\n");
 		fprintf(fp, "    fastmap    test seeding strategies\n");
+		fprintf(fp, "    getref     get the reference genome from .l2b\n");
 		fprintf(fp, "  Help:\n");
 		fprintf(fp, "    --help     print this help message\n");
 	} else {
@@ -60,6 +61,7 @@ int main(int argc, char *argv[])
 	else if (strcmp(argv[1], "raw2bwt") == 0) ret = main_raw2bwt(argc-1, argv+1);
 	else if (strcmp(argv[1], "genbwt") == 0) ret = main_genbwt(argc-1, argv+1);
 	else if (strcmp(argv[1], "gensa") == 0) ret = main_gensa(argc-1, argv+1);
+	else if (strcmp(argv[1], "getref") == 0) ret = main_getref(argc-1, argv+1);
 	else if (strcmp(argv[1], "bench") == 0) ret = main_bench(argc-1, argv+1);
 	else if (strcmp(argv[1], "fastmap") == 0) ret = main_fastmap(argc-1, argv+1);
 	else if (strcmp(argv[1], "--help") == 0) return usage(stdout, 1);
@@ -78,6 +80,33 @@ int main(int argc, char *argv[])
 		for (i = 0; i < argc; ++i)
 			fprintf(stderr, " %s", argv[i]);
 		fprintf(stderr, "\n[M::%s] Real time: %.3f sec; CPU: %.3f sec; Peak RSS: %.3f GB\n", __func__, kom_realtime(), kom_cputime(), kom_peakrss() / 1024.0 / 1024.0 / 1024.0);
+	}
+	return 0;
+}
+
+static int usage_getref(FILE *fp)
+{
+	fprintf(fp, "Usage: minibwa getref <ref.l2b>\n");
+	return fp == stdout? 0 : 1;
+}
+
+int main_getref(int argc, char *argv[])
+{
+	uint64_t i, j;
+	l2b_t *l2b;
+	if (argc == 1) return usage_getref(stderr);
+	l2b = l2b_load(argv[1]);
+	assert(l2b);
+	for (i = 0; i < l2b->n_ctg; ++i) {
+		const l2b_ctg_t *ctg = &l2b->ctg[i];
+		uint8_t *seq;
+		printf(">%s\n", ctg->name);
+		seq = kom_malloc(uint8_t, ctg->len);
+		l2b_getseq(l2b, i, 0, ctg->len, seq);
+		for (j = 0; j < ctg->len; ++j) seq[j] = "ACGTN"[seq[j]];
+		fwrite(seq, 1, j, stdout);
+		fputc('\n', stdout);
+		free(seq);
 	}
 	return 0;
 }
