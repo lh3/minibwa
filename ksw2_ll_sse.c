@@ -141,7 +141,7 @@ ksw_llrst_t ksw_ll_u8_core(void *q_, int tlen, const uint8_t *target, int _gapo,
 	// the core loop
 	for (i = 0; i < tlen; ++i) {
 		int j, k, imax;
-		__m128i e, h, t, f, max, *S = q->qp + target[i] * slen; // s is the 1st score vector
+		__m128i e, h, t, f, max, mf, me, *S = q->qp + target[i] * slen; // s is the 1st score vector
 		f = max = _mm_setzero_si128();
 		h = _mm_load_si128(H0 + slen - 1); // h={2,5,8,11,14,17,-1,-1} in the above example
 		h = _mm_slli_si128(h, 1); // h=H(i-1,-1); << instead of >> because x64 is little-endian
@@ -153,20 +153,29 @@ ksw_llrst_t ksw_ll_u8_core(void *q_, int tlen, const uint8_t *target, int _gapo,
 			 */
 			// compute H'(i,j); note that at the beginning, h=H'(i-1,j-1)
 			h = _mm_adds_epu8(h, _mm_load_si128(S + j));
-			h = _mm_subs_epu8(h, shift); // h=H'(i-1,j-1)+S(i,j)
+			h = _mm_subs_epu8(h, shift); // h=M=H'(i-1,j-1)+S(i,j)
 			e = _mm_load_si128(E + j); // e=E'(i,j)
-			h = _mm_max_epu8(h, e);
-			h = _mm_max_epu8(h, f); // h=H'(i,j)
+#if defined(__ARM_NEON)
+			// reassociate the gap recurrence: as the gap open o>=0, the e/f term of
+			// H'-q is dominated by E'-r/F'-r, so E' reads max(M,F) and F' reads
+			// max(M,E) in place of the reduced H'(i,j). this shortens the loop-carried
+			// f chain; arm64 only -- on x86 there is spare max throughput and it regresses.
+			me = _mm_max_epu8(h, e); // me=max(M,E)
+			mf = _mm_max_epu8(h, f); // mf=max(M,F)
+			h = _mm_max_epu8(me, f); // h=H'(i,j)
+#else
+			me = mf = h = _mm_max_epu8(_mm_max_epu8(h, e), f); // h=H'(i,j)
+#endif
 			max = _mm_max_epu8(max, h); // set max
 			_mm_store_si128(H1 + j, h); // save to H'(i,j)
 			// now compute E'(i+1,j)
 			e = _mm_subs_epu8(e, gape); // e=E'(i,j) - e_del
-			t = _mm_subs_epu8(h, gapoe); // h=H'(i,j) - o_del - e_del
+			t = _mm_subs_epu8(mf, gapoe); // max(M,F) - o_del - e_del
 			e = _mm_max_epu8(e, t); // e=E'(i+1,j)
 			_mm_store_si128(E + j, e); // save to E'(i+1,j)
 			// now compute F'(i,j+1)
 			f = _mm_subs_epu8(f, gape);
-			t = _mm_subs_epu8(h, gapoe); // h=H'(i,j) - o_ins - e_ins
+			t = _mm_subs_epu8(me, gapoe); // max(M,E) - o_ins - e_ins
 			f = _mm_max_epu8(f, t);
 			// get H'(i-1,j) and prepare for the next j
 			h = _mm_load_si128(H0 + j); // h=H'(i-1,j)
@@ -264,23 +273,28 @@ ksw_llrst_t ksw_ll_i16_core(void *q_, int tlen, const uint8_t *target, int _gapo
 	// the core loop
 	for (i = 0; i < tlen; ++i) {
 		int j, k, imax;
-		__m128i e, t, h, f, max, *S = q->qp + target[i] * slen; // s is the 1st score vector
+		__m128i e, t, h, f, max, mf, me, *S = q->qp + target[i] * slen; // s is the 1st score vector
 		f = max = _mm_setzero_si128();
 		h = _mm_load_si128(H0 + slen - 1); // h={2,5,8,11,14,17,-1,-1} in the above example
 		h = _mm_slli_si128(h, 2);
 		for (j = 0; LIKELY(j < slen); ++j) {
-			h = _mm_adds_epi16(h, _mm_load_si128(S++));
+			h = _mm_adds_epi16(h, _mm_load_si128(S++)); // h=M (match score)
 			e = _mm_load_si128(E + j);
-			h = _mm_max_epi16(h, e);
-			h = _mm_max_epi16(h, f);
+#if defined(__ARM_NEON)
+			me = _mm_max_epi16(h, e); // me=max(M,E)
+			mf = _mm_max_epi16(h, f); // mf=max(M,F); reassociated, see ksw_ll_u8_core
+			h = _mm_max_epi16(me, f); // h=H'(i,j)
+#else
+			me = mf = h = _mm_max_epi16(_mm_max_epi16(h, e), f); // h=H'(i,j)
+#endif
 			max = _mm_max_epi16(max, h);
 			_mm_store_si128(H1 + j, h);
 			e = _mm_subs_epu16(e, gape);
-			t = _mm_subs_epu16(h, gapoe);
+			t = _mm_subs_epu16(mf, gapoe); // max(M,F) - gapoe
 			e = _mm_max_epi16(e, t);
 			_mm_store_si128(E + j, e);
 			f = _mm_subs_epu16(f, gape);
-			t = _mm_subs_epu16(h, gapoe);
+			t = _mm_subs_epu16(me, gapoe); // max(M,E) - gapoe
 			f = _mm_max_epi16(f, t);
 			h = _mm_load_si128(H0 + j);
 		}
