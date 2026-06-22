@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define MB_VERSION "0.1-r363"
+#define MB_VERSION "0.2-r379-dirty"
 
 #define MB_F_PAF              (0x1LL)       // output in the PAF format
 #define MB_F_NO_UNMAP         (0x2LL)       // output unmapped query sequences

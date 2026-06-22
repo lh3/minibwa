@@ -1,3 +1,5 @@
+[![Bioconda](https://img.shields.io/conda/dn/bioconda/minibwa.svg?style=flag&label=Bioconda)](https://anaconda.org/bioconda/minibwa)
+[![Homebrew](https://img.shields.io/homebrew/v/minibwa)](https://formulae.brew.sh/formula/minibwa)
 [![preprint](https://img.shields.io/badge/arXiv-2606.15357-blue)](https://arxiv.org/abs/2606.15357)
 
 ## Getting Started
@@ -10,7 +12,7 @@ cd minibwa && make
 ./minibwa map chrM-human test/chrM-read_?.fa.gz > aln.sam     # align and output in SAM
 
 # other examples without test data
-minibwa map -t16 ref.index long-read.fq > aln.paf             # align long reads
+minibwa map -ft16 ref.index long-read.fq > aln.paf            # align long reads
 minibwa map --hic ref.index reads.interleaved.fq > aln.sam    # align Hi-C short reads
 
 # align *directional* bisulfite sequencing (BS-seq) reads
