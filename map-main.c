@@ -31,6 +31,8 @@ typedef struct {
 	mb_bseq1_t *seq;
 	mb_hit_t **hit;
 	mb_tbuf_t **tbuf;
+	kstring_t *str;       // per-superbatch SAM/PAF text, built in parallel (step 1), written in order (step 2)
+	void **fmt_km;        // per-thread kalloc pools for the parallel format pass
 } step_t;
 
 static void worker_for_se_batch(void *data, long i, int tid)
@@ -109,6 +111,53 @@ static void worker_for_pe(void *data, long i, int tid)
 	mb_pair(mb_tbuf_km(b), s->p->opt, s->p->idx->l2b, &s->n_hit[off], &s->hit[off], s->pes, len, seq);
 }
 
+// Format one superbatch worth of fragments into its own kstring. Each worker
+// touches only s->str[i], so the pass is thread-safe; the SAM/PAF text that was
+// previously built serially in step 2 is produced here in parallel instead.
+static void worker_for_format(void *data, long i, int tid)
+{
+	step_t *s = (step_t*)data;
+	const mb_opt_t *opt = s->p->opt;
+	const mb_idx_t *idx = s->p->idx;
+	kstring_t *out = &s->str[i];
+	void *km = s->fmt_km[tid]; // per-thread kalloc pool, reused across this thread's superbatches
+	int64_t est = 0;
+	int32_t b, k, j;
+	out->l = 0;
+	// pre-size from the superbatch's bases (SEQ+QUAL ~ 2*l_seq) plus a fixed
+	// per-record allowance for the name and fields, so the per-field appends do
+	// not grow the buffer up from zero (which also rounds up to ~1.7x the size)
+	for (b = 0; b < s->sb_cnt[i]; ++b) {
+		int32_t frag = s->sb_off[i] + b;
+		for (k = s->seg_off[frag]; k < s->seg_off[frag] + s->seg_cnt[frag]; ++k)
+			est += 2 * (int64_t)s->seq[k].l_seq + 128;
+	}
+	if (est + 1 > (int64_t)out->m) { out->m = est + 1; out->s = kom_realloc(char, out->s, out->m); }
+	for (b = 0; b < s->sb_cnt[i]; ++b) {
+		int32_t frag = s->sb_off[i] + b;
+		int32_t seg_st = s->seg_off[frag], seg_en = s->seg_off[frag] + s->seg_cnt[frag];
+		for (k = seg_st; k < seg_en; ++k) {
+			mb_bseq1_t *t = &s->seq[k];
+			int32_t mate_qlen = 0; // mate's l_seq for MC:Z; 0 suppresses MC/MQ
+			if (seg_en - seg_st > 1) {
+				int32_t mate_idx = k != seg_en - 1? k + 1 : seg_st; // wrap around if k is the last segment
+				mate_qlen = s->seq[mate_idx].l_seq;
+			}
+			if (s->n_hit[k] > 0) { // the query has at least one hit
+				int32_t n_sec = 0;
+				for (j = 0; j < s->n_hit[k]; ++j) {
+					const mb_hit_t *h = &s->hit[k][j];
+					if (h->parent == h->id || n_sec < opt->out_n)
+						mb_format(km, out, idx->l2b, t, seg_en - seg_st, &s->n_hit[seg_st], &s->hit[seg_st], j, opt->flag, k - seg_st, mate_qlen);
+					n_sec += (h->parent != h->id);
+				}
+			} else if (!(opt->flag & MB_F_NO_UNMAP)) {
+				mb_format(km, out, idx->l2b, t, seg_en - seg_st, &s->n_hit[seg_st], &s->hit[seg_st], -1, opt->flag, k - seg_st, mate_qlen);
+			}
+		}
+	}
+}
+
 static void *worker_pipeline(void *shared, int step, void *in)
 {
 	const int min_read_cnt = 40000; // should be smaller than opt->mb_size / (read_len * 2) for typical paired-end reads
@@ -172,6 +221,7 @@ static void *worker_pipeline(void *shared, int step, void *in)
 			}
 			s->sb_off[s->n_sb] = sb_off;
 			s->sb_cnt[s->n_sb++] = i - sb_off;
+			s->str = kom_calloc(kstring_t, s->n_sb); // per-superbatch output buffers, filled in step 1
 			return s;
 		} else free(s);
     } else if (step == 1) { // step 1: map
@@ -190,44 +240,37 @@ static void *worker_pipeline(void *shared, int step, void *in)
 			}
 			kt_for(opt->n_thread, worker_for_pe, in, s->n_frag);
 		}
+		// build SAM/PAF text in parallel so step 2 is pure ordered I/O. one kalloc
+		// pool per thread (reused across superbatches) keeps mb_format off the
+		// shared allocator without per-superbatch init/destroy churn.
+		s->fmt_km = kom_calloc(void*, opt->n_thread);
+		for (i = 0; i < opt->n_thread; ++i)
+			s->fmt_km[i] = opt->flag & MB_F_NO_KALLOC? 0 : km_init();
+		kt_for(opt->n_thread, worker_for_format, in, s->n_sb);
+		for (i = 0; i < opt->n_thread; ++i)
+			if (s->fmt_km[i]) km_destroy(s->fmt_km[i]);
+		free(s->fmt_km);
 		return in;
-    } else if (step == 2) { // step 2: output
-		void *km = 0;
+    } else if (step == 2) { // step 2: output (pure ordered I/O; text was built in step 1)
         step_t *s = (step_t*)in;
-		const mb_idx_t *idx = p->idx;
-		kstring_t out = {0,0,0};
 		int64_t tot_len = 0;
 
 		for (i = 0; i < opt->n_thread; ++i)
 			mb_tbuf_destroy(s->tbuf[i]);
 		free(s->tbuf);
-		if (!(opt->flag & MB_F_NO_KALLOC)) km = km_init();
 
+		// write the prebuilt per-superbatch buffers in input order, then free them
+		for (i = 0; i < s->n_sb; ++i) {
+			if (s->str[i].l) fwrite(s->str[i].s, 1, s->str[i].l, s->p->fp_out);
+			free(s->str[i].s);
+		}
+		free(s->str);
+
+		// free per-read mapping results and sequences
 		for (k = 0; k < s->n_frag; ++k) {
 			int32_t seg_st = s->seg_off[k], seg_en = s->seg_off[k] + s->seg_cnt[k];
-			out.l = 0;
 			for (i = seg_st; i < seg_en; ++i) {
-				mb_bseq1_t *t = &s->seq[i];
-				int32_t mate_qlen = 0; // mate's l_seq for MC:Z; 0 suppresses MC/MQ
-				if (seg_en - seg_st > 1) {
-					int32_t mate_idx = i != seg_en - 1? i + 1 : seg_st; // wrap around if i is the last segment
-					mate_qlen = s->seq[mate_idx].l_seq;
-				}
-				tot_len += t->l_seq;
-				if (s->n_hit[i] > 0) { // the query has at least one hit
-					int32_t n_sec = 0;
-					for (j = 0; j < s->n_hit[i]; ++j) {
-						const mb_hit_t *h = &s->hit[i][j];
-						if (h->parent == h->id || n_sec < opt->out_n)
-							mb_format(km, &out, idx->l2b, t, seg_en - seg_st, &s->n_hit[seg_st], &s->hit[seg_st], j, opt->flag, i - seg_st, mate_qlen);
-						n_sec += (h->parent != h->id);
-					}
-				} else if (!(opt->flag & MB_F_NO_UNMAP)) {
-					mb_format(km, &out, idx->l2b, t, seg_en - seg_st, &s->n_hit[seg_st], &s->hit[seg_st], -1, opt->flag, i - seg_st, mate_qlen);
-				}
-			}
-			fwrite(out.s, 1, out.l, s->p->fp_out);
-			for (i = seg_st; i < seg_en; ++i) {
+				tot_len += s->seq[i].l_seq;
 				for (j = 0; j < s->n_hit[i]; ++j) free(s->hit[i][j].p);
 				free(s->hit[i]);
 				free(s->seq[i].seq); free(s->seq[i].name);
@@ -236,9 +279,7 @@ static void *worker_pipeline(void *shared, int step, void *in)
 			}
 		}
 
-		free(out.s);
 		free(s->hit); free(s->n_hit); free(s->seq);
-		km_destroy(km);
 		if (kom_verbose >= 3)
 			fprintf(stderr, "[M::%s::%.3f*%.2f] mapped %ld bp in %ld sequences\n", __func__, kom_realtime(), kom_percent_cpu(), (long)tot_len, (long)s->n_seq);
 		free(s);
