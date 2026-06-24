@@ -192,7 +192,7 @@ static void write_sam_cigar(kstring_t *s, int sam_flag, int in_tag, int qlen, co
 	}
 }
 
-void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, int32_t n_seg, const int32_t *n_hit, mb_hit_t *const*hit, int32_t hit_idx, int64_t opt_flag, int seg_idx, int32_t mate_qlen, int xa_tag)
+void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, int32_t n_seg, const int32_t *n_hit, mb_hit_t *const*hit, int32_t hit_idx, int64_t opt_flag, int out_n, int seg_idx, int32_t mate_qlen, int xa_tag)
 {
 	int flag, n_h = n_hit[seg_idx];
 	int this_tid = -1, this_pos = -1;
@@ -222,7 +222,7 @@ void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, i
 		else if (r_next->rev) flag |= 0x20;
 	}
 	// [FIXME] exclude hard-clip from XA
-	if (xa_tag && !(flag & 0x4) && hit_idx) {
+	if (xa_tag && !(flag & 0x4) && hit_idx && hit_idx < out_n) {
 		kom_sprintf_lite(s, "%s,%c%d,", l2b->ctg[r->tid].name, "+-"[r->rev], r->ts+1);
 		write_sam_cigar(s, flag, 0, t->l_seq, r, opt_flag);
 		kom_sprintf_lite(s, ",%d;", r->blen - r->mlen + r->p->n_ambi);
@@ -331,7 +331,7 @@ void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, i
 	if ((opt_flag & MB_F_COPY_COMMENT) && t->comment)
 		kom_sprintf_lite(s, "\t%s", t->comment);
 	if (xa_tag) {
-		if (hit_idx + 1 >= n_h)
+		if (hit_idx + 1 == n_h || hit_idx + 1>= out_n)
 			kom_sprintf_lite(s, "\n");
 		else if (!hit_idx) // append XA here after first hit
 			kom_sprintf_lite(s, "\tXA:Z:");
@@ -340,10 +340,10 @@ void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, i
 	s->s[s->l] = 0; // we always have room for an extra byte
 }
 
-void mb_format(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, int32_t n_seg, const int32_t *n_hit, mb_hit_t *const*hit, int32_t hit_idx, int64_t opt_flag, int seg_idx, int32_t mate_qlen)
+void mb_format(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, int32_t n_seg, const int32_t *n_hit, mb_hit_t *const*hit, int32_t hit_idx, int64_t opt_flag, int out_n, int seg_idx, int32_t mate_qlen)
 {
 	if (!(opt_flag & MB_F_PAF))
-		mb_fmt_sam(km, s, l2b, t, n_seg, n_hit, hit, hit_idx, opt_flag, seg_idx, mate_qlen, !!(opt_flag & MB_F_XA));
+		mb_fmt_sam(km, s, l2b, t, n_seg, n_hit, hit, hit_idx, opt_flag, out_n, seg_idx, mate_qlen, !!(opt_flag & MB_F_XA));
 	else
 		mb_fmt_paf(s, l2b, t, hit_idx >= 0? &hit[seg_idx][hit_idx] : 0, opt_flag, n_seg, seg_idx);
 }
