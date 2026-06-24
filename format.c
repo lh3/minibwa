@@ -221,12 +221,8 @@ void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, i
 		if (r_next == NULL) flag |= 0x8;
 		else if (r_next->rev) flag |= 0x20;
 	}
-	int i, n_sa = 0; // n_sa: number of SA fields
-	if (r)
-		for (i = 0; i < n_h; ++i)
-			if (i != r - h && h[i].parent == h[i].id && h[i].p)
-				++n_sa;
-	if (xa_tag && (n_h - n_sa > 1) && !(flag & 0x4) && hit_idx) {
+	// [FIXME] exclude hard-clip from XA
+	if (xa_tag && !(flag & 0x4) && hit_idx) {
 		kom_sprintf_lite(s, "%s,%c%d,", l2b->ctg[r->tid].name, "+-"[r->rev], r->ts+1);
 		write_sam_cigar(s, flag, 0, t->l_seq, r, opt_flag);
 		kom_sprintf_lite(s, ",%d;", r->blen - r->mlen + r->p->n_ambi);
@@ -305,6 +301,11 @@ void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, i
 			}
 			if (r->p->cs) kom_sprintf_lite(s, "\t%s", (char*)&r->p->cigar[r->p->n_cigar]);
 			if (r->parent == r->id && r->p && n_h > 1 && h && r >= h && r - h < n_h) { // supplementary aln may exist
+				int i, n_sa = 0; // n_sa: number of SA fields
+				if (r)
+					for (i = 0; i < n_h; ++i)
+						if (i != r - h && h[i].parent == h[i].id && h[i].p)
+							++n_sa;
 				if (n_sa > 0) {
 					kom_sprintf_lite(s, "\tSA:Z:");
 					for (i = 0; i < n_h; ++i) {
@@ -329,7 +330,7 @@ void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, i
 	}
 	if ((opt_flag & MB_F_COPY_COMMENT) && t->comment)
 		kom_sprintf_lite(s, "\t%s", t->comment);
-	if (xa_tag && (n_h - n_sa > 1)) {
+	if (xa_tag) {
 		if (hit_idx + 1 >= n_h)
 			kom_sprintf_lite(s, "\n");
 		else if (!hit_idx) // append XA here after first hit
