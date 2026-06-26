@@ -315,6 +315,7 @@ int main_index(int argc, char *argv[])
 		if (is_meth) {
 			l2b_save_pac_meth(fn_l2b, l2b, 1);
 			mb_bwtgen(fn_l2b, fn_meth_bwt, block_size);
+			l2b_save(fn_l2b, l2b); // restore the real .l2b; the meth pac above overwrote it (cf. the regular pass)
 			bwt = mb_bwt_load_raw(fn_meth_bwt);
 			mb_bwt_gen_sa(bwt, sa_bit);
 			mb_bwt_save(fn_meth_bwt, bwt);
