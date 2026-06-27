@@ -73,7 +73,7 @@ void ksw_extz2_sse(void *km, int qlen, const uint8_t *query, int tlen, const uin
 	}
 	if (-min_sc > 2 * (q + e)) return; // otherwise, we won't see any mismatches
 
-	mem = (uint8_t*)kcalloc(km, tlen_ * 6 + qlen_ + 1, 16);
+	mem = (uint8_t*)kcalloc(km, (size_t)tlen_ * 6 + qlen_ + 1, 16);
 	u = (__m128i*)(((size_t)mem + 15) >> 4 << 4); // 16-byte aligned
 	v = u + tlen_, x = v + tlen_, y = x + tlen_, s = y + tlen_, sf = (uint8_t*)(s + tlen_), qr = sf + tlen_ * 16;
 	if (!approx_max) {
@@ -81,7 +81,7 @@ void ksw_extz2_sse(void *km, int qlen, const uint8_t *query, int tlen, const uin
 		for (t = 0; t < tlen_ * 16; ++t) H[t] = KSW_NEG_INF;
 	}
 	if (with_cigar) {
-		mem2 = (uint8_t*)kmalloc(km, ((size_t)(qlen + tlen - 1) * n_col_ + 1) * 16);
+		mem2 = (uint8_t*)kmalloc(km, (((size_t)qlen + tlen - 1) * n_col_ + 1) * 16);
 		p = (__m128i*)(((size_t)mem2 + 15) >> 4 << 4);
 		off = (int*)kmalloc(km, (qlen + tlen - 1) * sizeof(int) * 2);
 		off_end = off + qlen + tlen - 1;
