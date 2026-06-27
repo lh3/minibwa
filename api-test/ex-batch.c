@@ -53,9 +53,9 @@ int main(int argc, char *argv[])
 	idx = mb_idx_load(argv[1], 0);
 	assert(idx);
 
-	qlen = (int32_t*)malloc(opt.sb_seq * sizeof(int32_t));
-	seq = (char**)malloc(opt.sb_seq * sizeof(char*));
-	name = (char**)malloc(opt.sb_seq * sizeof(char*));
+	qlen = (int32_t*)calloc(opt.sb_seq, sizeof(int32_t));
+	seq = (char**)calloc(opt.sb_seq, sizeof(char*));
+	name = (char**)calloc(opt.sb_seq, sizeof(char*));
 
 	n_seq = 0;
 	while (kseq_read(ks) >= 0) {
