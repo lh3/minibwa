@@ -325,6 +325,7 @@ void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, i
 				for (i = 0; i < n_h; ++i)
 					if (i != r - h && h[i].parent == r - h && h[i].p->dp_max >= (double)opt->xa_ratio * r->p->dp_max)
 						++n_xa;
+				if (n_xa > 0) kom_sprintf_lite(s, "\tn2:i:%d", n_xa);
 				if (n_xa > 0 && n_xa <= opt->xa_max) {
 					kom_sprintf_lite(s, "\tXA:Z:");
 					for (i = 0; i < n_h; ++i) {

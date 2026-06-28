@@ -374,8 +374,13 @@ cb | cb | cb
 r | c | l .
 Tag	Type	Description
 _
+NM	i	Edit distance
 AS	i	Alignment score from dynamic programming
 ms	i	Score of the maximum scoring segment
+md	i	Max score minus secondary max score
+XA	Z	Secondary hits in (ctg,strandPos,CIGAR,NM;)+
+MC	Z	Mate CIGAR
+MQ	i	Mate mapping quality
 cg	Z	CIGAR (PAF only)
 MD	Z	Difference string in the SAM spec
 cs	Z	Difference string
@@ -385,5 +390,9 @@ cs	Z	Difference string
 .TP 2
 *
 Minibwa does not work with noisy long reads or spliced RNA-seq reads.
+.TP
 *
 Minibwa does not support undirectional bisulfite sequencing data.
+.TP
+*
+Minibwa does not recognize alternate haplotypes.

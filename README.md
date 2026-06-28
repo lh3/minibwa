@@ -109,6 +109,7 @@ in batch, which is faster and also supports paired-end mapping.
 
 * Minibwa does not work with noisy long reads or spliced RNA-seq reads.
 * Minibwa does not support undirectional bisulfite sequencing data.
+* Minibwa does not recognize alternate haplotypes.
 
 [zlib]: https://zlib.net/
 [mimalloc]: https://github.com/microsoft/mimalloc
