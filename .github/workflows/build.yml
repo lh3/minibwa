@@ -12,3 +12,5 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - run: make -j$(nproc)
       - run: make -j$(nproc) -C api-test
+      - name: meth XR/XG/XM tag test
+        run: sh test/test-meth-tags.sh

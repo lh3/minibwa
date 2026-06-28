@@ -16,6 +16,109 @@ static inline void write_tags(kstring_t *s, const mb_hit_t *p)
 	kom_sprintf_lite(s, "\tNM:i:%d\tAS:i:%d\tms:i:%d\tmd:i:%d", nm, p->p->dp_score, p->p->dp_max0, p->p->dp_max - p->p->dp_max2);
 }
 
+/* Bismark XR/XG/XM. Under directional --meth: XR follows mate (R1=CT,
+ * R2=GA, SE=CT); XG = "GA" iff (is_R2 XOR r->rev), reproducing Bismark's
+ * (XR,XG) -> {OT,OB,CTOT,CTOB} encoding.
+ *
+ * XM is a per-base methylation-call string of length qlen, written in
+ * SAM SEQ orientation. SAM SEQ is always in top-strand-ref orientation
+ * (sam_write_sq revcomps when r->rev), so a CIGAR-ordered walk over SEQ
+ * positions produces a string that already aligns with SEQ in display
+ * order; no end-of-walk reversal is needed.
+ *
+ * Alphabet: . non-cytosine; z/Z CpG un/methylated; x/X CHG; h/H CHH;
+ * u/U cytosine in unknown context (off the reference window or N base). */
+static void write_meth_tags(kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t,
+							int n_seg, int seg_idx, const mb_hit_t *r)
+{
+	int is_r2 = (n_seg == 2 && seg_idx == 1);
+	int xg_is_ga = is_r2 ^ r->rev;
+	const char *xr = is_r2 ? "GA" : "CT";
+	const char *xg = xg_is_ga ? "GA" : "CT";
+	int qlen = t->l_seq;
+	int64_t tlen = l2b->ctg[r->tid].len;
+	int64_t fetch_st = r->ts >= 2 ? r->ts - 2 : 0;
+	int64_t fetch_en = r->te + 2 <= tlen ? r->te + 2 : tlen;
+	uint8_t *ref = (uint8_t*)kom_malloc(uint8_t, fetch_en - fetch_st);
+	char *xm = (char*)kom_malloc(char, qlen + 1);
+	/* XM is written in SAM SEQ orientation, so the first aligned base lands
+	 * at the SAM leading soft-clip offset. That offset is r->qs for forward
+	 * reads but qlen - r->qe for reverse reads (see clip_len[0] in mb_fmt_sam);
+	 * r->qs/r->qe are in original-read coordinates. Using r->qs unconditionally
+	 * mis-frames reverse reads with asymmetric clipping. */
+	int seq_pos = r->rev ? (int)(qlen - r->qe) : r->qs;
+	int64_t ref_pos = r->ts;
+	uint32_t k;
+	int j;
+
+	l2b_getseq(l2b, r->tid, fetch_st, fetch_en, ref);
+	for (j = 0; j < qlen; ++j) xm[j] = '.';
+	xm[qlen] = 0;
+
+	for (k = 0; k < r->p->n_cigar; ++k) {
+		int op = r->p->cigar[k] & 0xf;
+		int len = r->p->cigar[k] >> 4;
+		if (op == 0 || op == 7 || op == 8) { /* M/=/X */
+			for (j = 0; j < len; ++j) {
+				int read_b, off, c1, c2;
+				char meth = '.', unmeth = '.', call = '.';
+				if (ref_pos < fetch_st || ref_pos >= fetch_en) goto next;
+				off = (int)(ref_pos - fetch_st);
+				/* Top-strand-ref-frame read base. SEQ at seq_pos is
+				 * t->seq[seq_pos] for r->rev=0 and comp(t->seq[qlen-1-seq_pos])
+				 * for r->rev=1; either way it aligns to top_strand_ref[ref_pos]. */
+				if (r->rev) {
+					int b = kom_nt4_table[(uint8_t)t->seq[qlen - 1 - seq_pos]];
+					read_b = b < 4 ? 3 - b : 4;
+				} else {
+					read_b = kom_nt4_table[(uint8_t)t->seq[seq_pos]];
+				}
+				if (!xg_is_ga) {
+					/* XG=CT: top-strand C; context on top strand. */
+					if (ref[off] != 1) goto next;
+					c1 = (off + 1 < fetch_en - fetch_st) ? ref[off + 1] : 4;
+					c2 = (off + 2 < fetch_en - fetch_st) ? ref[off + 2] : 4;
+					if (c1 == 2)        { meth = 'Z'; unmeth = 'z'; }
+					else if (c1 == 4)   { meth = 'U'; unmeth = 'u'; }
+					else if (c2 == 2)   { meth = 'X'; unmeth = 'x'; }
+					else if (c2 == 4)   { meth = 'U'; unmeth = 'u'; }
+					else                { meth = 'H'; unmeth = 'h'; }
+					if      (read_b == 1) call = meth;
+					else if (read_b == 3) call = unmeth;
+				} else {
+					/* XG=GA: bottom-strand C, top-strand G. Bottom-strand
+					 * 5'->3' context base is comp(top[ref_pos-1]); CpG iff
+					 * top[ref_pos-1]=C, etc. */
+					if (ref[off] != 2) goto next;
+					c1 = (ref_pos - 1 >= fetch_st) ? ref[off - 1] : 4;
+					c2 = (ref_pos - 2 >= fetch_st) ? ref[off - 2] : 4;
+					if (c1 == 1)        { meth = 'Z'; unmeth = 'z'; }
+					else if (c1 == 4)   { meth = 'U'; unmeth = 'u'; }
+					else if (c2 == 1)   { meth = 'X'; unmeth = 'x'; }
+					else if (c2 == 4)   { meth = 'U'; unmeth = 'u'; }
+					else                { meth = 'H'; unmeth = 'h'; }
+					/* meth bottom C preserved -> comp = G (read_b=2);
+					 * unmeth bottom C->T -> comp = A (read_b=0). */
+					if      (read_b == 2) call = meth;
+					else if (read_b == 0) call = unmeth;
+				}
+next:
+				xm[seq_pos] = call;
+				++seq_pos;
+				++ref_pos;
+			}
+		} else if (op == 1) { /* I */
+			seq_pos += len;
+		} else if (op == 2 || op == 3) { /* D, N */
+			ref_pos += len;
+		}
+	}
+
+	kom_sprintf_lite(s, "\tXR:Z:%s\tXG:Z:%s\tXM:Z:%s", xr, xg, xm);
+	free(ref);
+	free(xm);
+}
+
 void mb_fmt_paf(kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, const mb_hit_t *p, uint64_t opt_flag, int n_seg, int seg_idx)
 {
 	kom_sprintf_lite(s, "%s", t->name);
@@ -289,6 +392,7 @@ void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, i
 	if (n_seg > 2) kom_sprintf_lite(s, "\tFI:i:%d", seg_idx);
 	if (r) {
 		write_tags(s, r);
+		if (opt_flag & MB_F_METH) write_meth_tags(s, l2b, t, n_seg, seg_idx, r);
 		// MC:Z mate CIGAR and MQ:i mate MAPQ; r_next is the mate's primary (see above).
 		if (n_seg > 1 && r_next && r_next->p && r_next->p->n_cigar > 0 && mate_qlen > 0) {
 			kom_sprintf_lite(s, "\tMC:Z:");
