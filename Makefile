@@ -42,7 +42,7 @@ endif
 all:$(PROG)
 
 mimalloc.o:
-		$(CC) -c -std=gnu99 -O3 -Wall -Wextra -DNDEBUG -DMI_MALLOC_OVERRIDE -DMI_OSX_INTERPOSE=1 -DMI_OSX_ZONE=1 -Imimalloc mimalloc/static.c -o $@
+		$(CC) -c -std=gnu11 -O3 -Wall -Wextra -DNDEBUG -DMI_MALLOC_OVERRIDE -DMI_OSX_INTERPOSE=1 -DMI_OSX_ZONE=1 -Imimalloc mimalloc/static.c -o $@
 
 libminibwa.a:$(LOBJS)
 		$(AR) -csru $@ $(LOBJS)
@@ -67,8 +67,8 @@ cs.o: mbpriv.h minibwa.h l2bit.h bwt.h kommon.h bseq.h kalloc.h
 fastmap.o: mbpriv.h minibwa.h l2bit.h bwt.h kommon.h bseq.h ketopt.h kseq.h
 fastmap.o: kalloc.h
 format.o: mbpriv.h minibwa.h l2bit.h bwt.h kommon.h bseq.h
-index.o: libsais64.h kommon.h ketopt.h mbpriv.h minibwa.h l2bit.h bwt.h
-index.o: bseq.h
+index.o: libsais.h libsais64.h kommon.h ketopt.h mbpriv.h minibwa.h l2bit.h
+index.o: bwt.h bseq.h
 kalloc.o: kalloc.h
 kommon.o: kommon.h
 ksw2_extd2_sse.o: ksw2.h
@@ -79,10 +79,10 @@ l2bit.o: kommon.h l2bit.h kseq.h
 lchain.o: mbpriv.h minibwa.h l2bit.h bwt.h kommon.h bseq.h kalloc.h ksort.h
 libsais.o: libsais.h
 libsais64.o: libsais.h libsais64.h
-main.o: kommon.h mbpriv.h minibwa.h l2bit.h bwt.h bseq.h ketopt.h kseq.h
+main.o: kommon.h mbpriv.h minibwa.h l2bit.h bwt.h bseq.h ketopt.h
 map-algo.o: mbpriv.h minibwa.h l2bit.h bwt.h kommon.h bseq.h kalloc.h ksort.h
 map-main.o: kommon.h mbpriv.h minibwa.h l2bit.h bwt.h bseq.h kalloc.h
-map-main.o: kthread.h ketopt.h
+map-main.o: kthread.h ketopt.h kseq.h
 options.o: minibwa.h
 pe.o: mbpriv.h minibwa.h l2bit.h bwt.h kommon.h bseq.h kalloc.h ksw2.h
 seed.o: mbpriv.h minibwa.h l2bit.h bwt.h kommon.h bseq.h kalloc.h ksort.h

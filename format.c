@@ -49,7 +49,7 @@ void mb_fmt_paf(kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, const mb_hi
  * SAM header *
  **************/
 
-static char *mb_escape(char *s)
+char *mb_escape(char *s)
 {
 	char *p, *q;
 	for (p = q = s; *p; ++p) {
@@ -59,6 +59,7 @@ static char *mb_escape(char *s)
 			else if (*p == 'n') *q++ = '\n';
 			else if (*p == 'r') *q++ = '\r';
 			else if (*p == '\\') *q++ = '\\';
+			else if (*p == '\0') break;
 		} else *q++ = *p;
 	}
 	*q = '\0';
@@ -114,7 +115,7 @@ int mb_fmt_sam_hdr(kstring_t *str, const l2b_t *idx, const char *rg, const char 
 	if (ver) kom_sprintf_lite(str, "\tVN:%s", ver);
 	if (argc > 1) {
 		kom_sprintf_lite(str, "\tCL:minibwa");
-		for (i = 1; i < argc; ++i)
+		for (i = 0; i < argc; ++i)
 			kom_sprintf_lite(str, " %s", argv[i]);
 	}
 	kom_sprintf_lite(str, "\n");
@@ -192,7 +193,7 @@ static void write_sam_cigar(kstring_t *s, int sam_flag, int in_tag, int qlen, co
 	}
 }
 
-void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, int32_t n_seg, const int32_t *n_hit, mb_hit_t *const*hit, int32_t hit_idx, int64_t opt_flag, int seg_idx, int32_t mate_qlen)
+void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, int32_t n_seg, const int32_t *n_hit, mb_hit_t *const*hit, int32_t hit_idx, const mb_opt_t *opt, int seg_idx, int32_t mate_qlen)
 {
 	int flag, n_h = n_hit[seg_idx];
 	int this_tid = -1, this_pos = -1;
@@ -235,7 +236,7 @@ void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, i
 	} else {
 		this_tid = r->tid, this_pos = r->ts;
 		kom_sprintf_lite(s, "\t%s\t%d\t%d\t", l2b->ctg[r->tid].name, r->ts+1, r->mapq);
-		write_sam_cigar(s, flag, 0, t->l_seq, r, opt_flag);
+		write_sam_cigar(s, flag, 0, t->l_seq, r, opt->flag);
 	}
 
 	// write mate positions
@@ -268,12 +269,12 @@ void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, i
 		if (t->qual) sam_write_sq(s, t->qual, t->l_seq, 0, 0);
 		else kom_sprintf_lite(s, "*");
 	} else {
-		if ((flag & 0x900) == 0 || (opt_flag & MB_F_SUPP_SOFT)) {
+		if ((flag & 0x900) == 0 || (opt->flag & MB_F_SUPP_SOFT)) {
 			sam_write_sq(s, t->seq, t->l_seq, r->rev, r->rev);
 			kom_sprintf_lite(s, "\t");
 			if (t->qual) sam_write_sq(s, t->qual, t->l_seq, r->rev, 0);
 			else kom_sprintf_lite(s, "*");
-		} else if ((flag & 0x100) && !(opt_flag & MB_F_2ND_SEQ)){
+		} else if ((flag & 0x100) && !(opt->flag & MB_F_2ND_SEQ)){
 			kom_sprintf_lite(s, "*\t*");
 		} else {
 			sam_write_sq(s, t->seq + r->qs, r->qe - r->qs, r->rev, r->rev);
@@ -291,7 +292,7 @@ void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, i
 		// MC:Z mate CIGAR and MQ:i mate MAPQ; r_next is the mate's primary (see above).
 		if (n_seg > 1 && r_next && r_next->p && r_next->p->n_cigar > 0 && mate_qlen > 0) {
 			kom_sprintf_lite(s, "\tMC:Z:");
-			write_sam_cigar(s, 0, 0, mate_qlen, r_next, opt_flag);
+			write_sam_cigar(s, 0, 0, mate_qlen, r_next, opt->flag);
 			kom_sprintf_lite(s, "\tMQ:i:%d", r_next->mapq);
 		}
 		if (r->p->cs) kom_sprintf_lite(s, "\t%s", (char*)&r->p->cigar[r->p->n_cigar]);
@@ -319,19 +320,37 @@ void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, i
 					kom_sprintf_lite(s, ",%d,%d;", q->mapq, q->blen - q->mlen + q->p->n_ambi);
 				}
 			}
+			if (opt->xa_max > 0) {
+				int i, n_xa = 0;
+				for (i = 0; i < n_h; ++i)
+					if (i != r - h && h[i].parent == r - h && h[i].p->dp_max >= (double)opt->xa_ratio * r->p->dp_max)
+						++n_xa;
+				if (n_xa > 0) kom_sprintf_lite(s, "\tn2:i:%d", n_xa);
+				if (n_xa > 0 && n_xa <= opt->xa_max) {
+					kom_sprintf_lite(s, "\tXA:Z:");
+					for (i = 0; i < n_h; ++i) {
+						const mb_hit_t *q = &h[i];
+						if (i != r - h && q->parent == r - h && q->p->dp_max >= (double)opt->xa_ratio * r->p->dp_max) {
+							kom_sprintf_lite(s, "%s,%c%d,", l2b->ctg[q->tid].name, "+-"[q->rev], q->ts+1);
+							write_sam_cigar(s, 0, 0, t->l_seq, q, opt->flag);
+							kom_sprintf_lite(s, ",%d;", q->blen - q->mlen + q->p->n_ambi);
+						}
+					}
+				}
+			}
 		}
 	}
 
-	if ((opt_flag & MB_F_COPY_COMMENT) && t->comment)
+	if ((opt->flag & MB_F_COPY_COMMENT) && t->comment)
 		kom_sprintf_lite(s, "\t%s", t->comment);
 	kom_sprintf_lite(s, "\n");
 	s->s[s->l] = 0; // we always have room for an extra byte
 }
 
-void mb_format(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, int32_t n_seg, const int32_t *n_hit, mb_hit_t *const*hit, int32_t hit_idx, int64_t opt_flag, int seg_idx, int32_t mate_qlen)
+void mb_format(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, int32_t n_seg, const int32_t *n_hit, mb_hit_t *const*hit, int32_t hit_idx, const mb_opt_t *opt, int seg_idx, int32_t mate_qlen)
 {
-	if (!(opt_flag & MB_F_PAF))
-		mb_fmt_sam(km, s, l2b, t, n_seg, n_hit, hit, hit_idx, opt_flag, seg_idx, mate_qlen);
+	if (!(opt->flag & MB_F_PAF))
+		mb_fmt_sam(km, s, l2b, t, n_seg, n_hit, hit, hit_idx, opt, seg_idx, mate_qlen);
 	else
-		mb_fmt_paf(s, l2b, t, hit_idx >= 0? &hit[seg_idx][hit_idx] : 0, opt_flag, n_seg, seg_idx);
+		mb_fmt_paf(s, l2b, t, hit_idx >= 0? &hit[seg_idx][hit_idx] : 0, opt->flag, n_seg, seg_idx);
 }

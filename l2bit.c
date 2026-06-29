@@ -4,21 +4,22 @@
 #include "kommon.h"
 #include "l2bit.h"
 #include "kseq.h"
-KSEQ_INIT(gzFile, gzread);
+KSEQ_INIT(gzFile, gzread)
 
 static int64_t l2b_pos2cid(const l2b_t *l2b, int64_t s, int64_t len, int64_t *cst)
 {
 	int64_t lo = 0, hi = l2b->n_ctg, mid;
-	const l2b_ctg_t *ctg = 0;
 	while (lo < hi) {
+		const l2b_ctg_t *ctg;
 		mid = (lo + hi) / 2;
 		ctg = &l2b->ctg[mid];
-		if (ctg->off <= s && s < ctg->off + ctg->len) break;
-		else if (s < ctg->off) hi = mid;
-		else lo = mid;
+		if (ctg->off <= s && s < ctg->off + ctg->len) {
+			*cst = s - ctg->off;
+			return s + len <= ctg->off + ctg->len? mid : -1;
+		} else if (s < ctg->off) hi = mid;
+		else lo = mid + 1;
 	}
-	*cst = s - ctg->off;
-	return s + len <= ctg->off + ctg->len? mid : -1;
+	return -1; // s is in no contig
 }
 
 int64_t l2b_intv2cid(const l2b_t *l2b, uint64_t st, uint64_t en, int64_t *cst, int *rev)
@@ -201,7 +202,7 @@ static void l2b_collate_str(l2b_t *l2b)
 			memcpy(p_comm, ctg->comm, len + 1);
 			free(ctg->comm);
 			ctg->comm = p_comm;
-		} else len = 1;
+		} else len = 0;
 		p_comm += len + 1;
 	}
 }
@@ -275,7 +276,10 @@ l2b_t *l2b_load(const char *fn)
 	fp = fn == 0 || strcmp(fn, "-") == 0? stdin : fopen(fn, "rb");
 	if (fp == 0) return 0;
 	fread(magic, 1, 4, fp);
-	if (strncmp(magic, L2B_MAGIC, 4) != 0) return 0;
+	if (strncmp(magic, L2B_MAGIC, 4) != 0) {
+		if (fp != stdin) fclose(fp);
+		return 0;
+	}
 	l2b = kom_calloc(l2b_t, 1);
 	fread(&dummy, 4, 1, fp);
 	fread(&l2b->n_ctg, 8, 1, fp);
@@ -311,8 +315,10 @@ l2b_t *l2b_load(const char *fn)
 		p_comm += *p_comm? strlen(p_comm) + 1 : 1;
 	}
 	if (p_name - l2b->cat_name != len_name || p_comm - l2b->cat_comm != len_comm) goto load_failure;
+	if (fp != stdin) fclose(fp);
 	return l2b;
 load_failure:
+	if (fp != stdin) fclose(fp);
 	l2b_destroy(l2b);
 	return 0;
 }

@@ -73,6 +73,7 @@ mb_bwt_t *mb_bwt_init_from_raw(int is_byte, const void *raw_, uint64_t len, uint
 	bwt->seq_len = len;
 	bwt->data_len = mb_bwt_data_len(len);
 	bwt->data = kom_calloc(uint64_t, bwt->data_len);
+	if (len == 0) return bwt; // nothing to encode; avoid the last-block overflow
 
 	memset(c, 0, 32);
 	for (i = k = 0; i < len; ++i) {
@@ -661,6 +662,11 @@ mb_bwt_t *mb_bwt_load(const char *fn)
 	read_huge(fp, bwt->data_len << 3, bwt->data);
 	fread(&bwt->n_sa, 8, 1, fp);
 	if (bwt->sa_bit != (uint32_t)-1 && bwt->n_sa > 0) {
+		uint64_t expected_n_sa = (bwt->seq_len + (1ULL << bwt->sa_bit)) >> bwt->sa_bit;
+		if (bwt->n_sa != expected_n_sa) {
+			mb_bwt_destroy(bwt);
+			return NULL;
+		}
 		bwt->sa = kom_malloc(uint64_t, bwt->n_sa);
 		fread(bwt->sa, 8, bwt->n_sa, fp);
 	}

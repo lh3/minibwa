@@ -49,8 +49,8 @@ static inline __m128i _mm_setr_epi32(int a, int b, int c, int d) {
 }
 static inline __m128i _mm_cmpgt_epi32(__m128i a, __m128i b) { return vreinterpretq_u8_u32(vcgtq_s32(vreinterpretq_s32_u8(a), vreinterpretq_s32_u8(b))); }
 static inline __m128i _mm_max_epi32(__m128i a, __m128i b) { return vreinterpretq_u8_s32(vmaxq_s32(vreinterpretq_s32_u8(a), vreinterpretq_s32_u8(b))); }
-static inline __m128i _mm_add_epi32(__m128i a, __m128i b) { return vreinterpretq_u8_s32(vaddq_u32(vreinterpretq_u32_u8(a), vreinterpretq_u32_u8(b))); }
-static inline __m128i _mm_sub_epi32(__m128i a, __m128i b) { return vreinterpretq_u8_s32(vsubq_u32(vreinterpretq_u32_u8(a), vreinterpretq_u32_u8(b))); }
+static inline __m128i _mm_add_epi32(__m128i a, __m128i b) { return vreinterpretq_u8_s32(vaddq_s32(vreinterpretq_s32_u8(a), vreinterpretq_s32_u8(b))); }
+static inline __m128i _mm_sub_epi32(__m128i a, __m128i b) { return vreinterpretq_u8_s32(vsubq_s32(vreinterpretq_s32_u8(a), vreinterpretq_s32_u8(b))); }
 
 #define _mm_insert_epi32(a, b, imm8) vreinterpretq_u8_s32(vsetq_lane_s32((b), vreinterpretq_s32_u8(a), (imm8)))
 

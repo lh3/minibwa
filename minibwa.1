@@ -1,4 +1,4 @@
-.TH minibwa 1 "15 June 2026" "minibwa-0.1 (r363)" "Bioinformatics tools"
+.TH minibwa 1 "28 June 2026" "minibwa-0.3 (r391)" "Bioinformatics tools"
 .SH NAME
 .PP
 minibwa - short/long-read alignment against a reference genome
@@ -297,16 +297,28 @@ Output file name [stdout]
 .B -u
 Don't output unmapped reads
 .TP
-.BR --outn = \fIINT
+.BR --outn = \fINUM
 Output up to
 .I INT
 secondary alignments [0]. Primary and supplementary alignments are always outputted.
+.TP
+.BR --xa = \fINUM
+If there are
+.RI >= NUM
+secondary hits of score above 80% of the best hit, output all of them to the XA tag [5]
 .TP
 .B -y
 Copy FASTA/Q comments to output
 .TP
 .B -Y
 In the SAM output, use soft clipping for supplementary alignments
+.TP
+.BI -H \ STR
+If
+.I STR
+starts with @, insert it to the SAM header; otherwise, treat
+.I STR
+as a file name and insert lines in this file to the SAM header []
 .TP
 .B -5
 In the SAM output, if a read has supplementary alignments, take the alignment
@@ -362,8 +374,13 @@ cb | cb | cb
 r | c | l .
 Tag	Type	Description
 _
+NM	i	Edit distance
 AS	i	Alignment score from dynamic programming
 ms	i	Score of the maximum scoring segment
+md	i	Max score minus secondary max score
+XA	Z	Secondary hits in (ctg,strandPos,CIGAR,NM;)+
+MC	Z	Mate CIGAR
+MQ	i	Mate mapping quality
 cg	Z	CIGAR (PAF only)
 MD	Z	Difference string in the SAM spec
 cs	Z	Difference string
@@ -373,5 +390,9 @@ cs	Z	Difference string
 .TP 2
 *
 Minibwa does not work with noisy long reads or spliced RNA-seq reads.
+.TP
 *
 Minibwa does not support undirectional bisulfite sequencing data.
+.TP
+*
+Minibwa does not recognize alternate haplotypes.

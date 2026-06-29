@@ -1,3 +1,7 @@
+[![Bioconda](https://img.shields.io/conda/dn/bioconda/minibwa.svg?style=flag&label=Bioconda)](https://anaconda.org/bioconda/minibwa)
+[![Homebrew](https://img.shields.io/homebrew/v/minibwa)](https://formulae.brew.sh/formula/minibwa)
+[![preprint](https://img.shields.io/badge/arXiv-2606.15357-blue)](https://arxiv.org/abs/2606.15357)
+
 ## Getting Started
 ```sh
 git clone https://github.com/lh3/minibwa
@@ -8,7 +12,7 @@ cd minibwa && make
 ./minibwa map chrM-human test/chrM-read_?.fa.gz > aln.sam     # align and output in SAM
 
 # other examples without test data
-minibwa map -t16 ref.index long-read.fq > aln.paf             # align long reads
+minibwa map -ft16 ref.index long-read.fq > aln.paf            # align long reads
 minibwa map --hic ref.index reads.interleaved.fq > aln.sam    # align Hi-C short reads
 
 # align *directional* bisulfite sequencing (BS-seq) reads
@@ -87,6 +91,12 @@ Note in the default adaptive mode, `-g`/`-w`/`-W`/`-N`/`-m`/`-s` only changes
 the short-read setting; the long-read setting is fixed. This mode is disabled
 with `--adap=no` or when `-x sr` or `-x lr` is specified.
 
+#### Mapping with legacy bwa-mem CLI
+
+Minibwa also provides legacy bwa-mem command-line interface (CLI) via the `mem` subcommand.
+However, due to algorithm and parameter differences, many bwa-mem options are ignored.
+The output minibwa alignment is also not identical to bwa-mem.
+
 ## Developers' Guide
 
 Minibwa provides basic APIs for loading index and aligning reads.
@@ -99,6 +109,7 @@ in batch, which is faster and also supports paired-end mapping.
 
 * Minibwa does not work with noisy long reads or spliced RNA-seq reads.
 * Minibwa does not support undirectional bisulfite sequencing data.
+* Minibwa does not recognize alternate haplotypes.
 
 [zlib]: https://zlib.net/
 [mimalloc]: https://github.com/microsoft/mimalloc

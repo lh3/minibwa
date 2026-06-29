@@ -1,15 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include <zlib.h>
 #include "kommon.h"
 #include "mbpriv.h"
 #include "ketopt.h"
-#include "kseq.h"
-//KSEQ_INIT(gzFile, gzread)
 
 int main_index(int argc, char *argv[]);
 int main_map(int argc, char *argv[]);
+int main_mem(int argc, char *argv[]);
 
 int main_fa2bit(int argc, char *argv[]);
 int main_raw2bwt(int argc, char *argv[]);
@@ -17,6 +17,7 @@ int main_genraw(int argc, char *argv[]);
 int main_genbwt(int argc, char *argv[]);
 int main_gensa(int argc, char *argv[]);
 
+int main_getref(int argc, char *argv[]);
 int main_fastmap(int argc, char *argv[]);
 int main_bench(int argc, char *argv[]);
 
@@ -28,6 +29,7 @@ static int usage(FILE *fp, int is_long)
 		fprintf(fp, "  General:\n");
 		fprintf(fp, "    index      index reference FASTA\n");
 		fprintf(fp, "    map        read alignment\n");
+		fprintf(fp, "    mem        legacy bwa-mem CLI (not recommended)\n");
 		fprintf(fp, "    version    print the version number\n");
 		fprintf(fp, "  Separate indexing routines:\n");
 		fprintf(fp, "    fa2bit     convert FASTA to the long-2bit format\n");
@@ -38,11 +40,13 @@ static int usage(FILE *fp, int is_long)
 		fprintf(fp, "  Debugging:\n");
 		fprintf(fp, "    bench      performance evaluation\n");
 		fprintf(fp, "    fastmap    test seeding strategies\n");
+		fprintf(fp, "    getref     get the reference genome from .l2b\n");
 		fprintf(fp, "  Help:\n");
 		fprintf(fp, "    --help     print this help message\n");
 	} else {
 		fprintf(fp, "  index      index reference FASTA\n");
 		fprintf(fp, "  map        read alignment\n");
+		fprintf(fp, "  mem        legacy bwa-mem CLI (not recommended)\n");
 		fprintf(fp, "  version    print the version number\n");
 	}
 	return fp == stdout? 0 : 1;
@@ -54,12 +58,14 @@ int main(int argc, char *argv[])
 	kom_realtime();
 	if (argc == 1) return usage(stdout, 0);
 	else if (strcmp(argv[1], "index") == 0) ret = main_index(argc-1, argv+1);
-	else if (strcmp(argv[1], "map") == 0 || strcmp(argv[1], "mem") == 0) ret = main_map(argc-1, argv+1);
+	else if (strcmp(argv[1], "map") == 0) ret = main_map(argc-1, argv+1);
+	else if (strcmp(argv[1], "mem") == 0) ret = main_mem(argc-1, argv+1);
 	else if (strcmp(argv[1], "fa2bit") == 0) ret = main_fa2bit(argc-1, argv+1);
 	else if (strcmp(argv[1], "genraw") == 0) ret = main_genraw(argc-1, argv+1);
 	else if (strcmp(argv[1], "raw2bwt") == 0) ret = main_raw2bwt(argc-1, argv+1);
 	else if (strcmp(argv[1], "genbwt") == 0) ret = main_genbwt(argc-1, argv+1);
 	else if (strcmp(argv[1], "gensa") == 0) ret = main_gensa(argc-1, argv+1);
+	else if (strcmp(argv[1], "getref") == 0) ret = main_getref(argc-1, argv+1);
 	else if (strcmp(argv[1], "bench") == 0) ret = main_bench(argc-1, argv+1);
 	else if (strcmp(argv[1], "fastmap") == 0) ret = main_fastmap(argc-1, argv+1);
 	else if (strcmp(argv[1], "--help") == 0) return usage(stdout, 1);
@@ -78,6 +84,33 @@ int main(int argc, char *argv[])
 		for (i = 0; i < argc; ++i)
 			fprintf(stderr, " %s", argv[i]);
 		fprintf(stderr, "\n[M::%s] Real time: %.3f sec; CPU: %.3f sec; Peak RSS: %.3f GB\n", __func__, kom_realtime(), kom_cputime(), kom_peakrss() / 1024.0 / 1024.0 / 1024.0);
+	}
+	return 0;
+}
+
+static int usage_getref(FILE *fp)
+{
+	fprintf(fp, "Usage: minibwa getref <ref.l2b>\n");
+	return fp == stdout? 0 : 1;
+}
+
+int main_getref(int argc, char *argv[])
+{
+	uint64_t i, j;
+	l2b_t *l2b;
+	if (argc == 1) return usage_getref(stderr);
+	l2b = l2b_load(argv[1]);
+	assert(l2b);
+	for (i = 0; i < l2b->n_ctg; ++i) {
+		const l2b_ctg_t *ctg = &l2b->ctg[i];
+		uint8_t *seq;
+		printf(">%s\n", ctg->name);
+		seq = kom_malloc(uint8_t, ctg->len);
+		l2b_getseq(l2b, i, 0, ctg->len, seq);
+		for (j = 0; j < ctg->len; ++j) seq[j] = "ACGTN"[seq[j]];
+		fwrite(seq, 1, j, stdout);
+		fputc('\n', stdout);
+		free(seq);
 	}
 	return 0;
 }

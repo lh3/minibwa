@@ -35,6 +35,8 @@ static void mb_opt_reset(mb_opt_t *opt)
 	opt->sb_seq = 24;
 	opt->n_thread = 1;
 	opt->seed = 11;
+	opt->xa_max = 5;
+	opt->xa_ratio = 0.8f;
 	opt->max_sw_mat = 100000000;
 	opt->cap_kalloc = 1UL<<28;
 	opt->max_mb_size = 1000000000;

@@ -115,9 +115,10 @@ static void mb_seed_sort_dedup(mb_sai_v *u)
 	for (i = 1, i0 = 0; i <= u->n; ++i) {
 		if (i == u->n || u->a[i].x[0] != u->a[i0].x[0]) {
 			if (i - i0 > 1) {
-				int64_t k, k0;
+				int64_t k, k0, n1 = i - i0;
+				mb_sai_t *a1 = &u->a[i0];
 				radix_sort_mb_sais(&u->a[i0], &u->a[i]); // sort by ::size
-				kom_reverse(mb_sai_t, u->n, u->a);
+				kom_reverse(mb_sai_t, n1, a1);
 				for (k = i0 + 1, k0 = i0; k <= i; ++k) {
 					if (k == i || u->a[k0].size != u->a[k].size) {
 						if (k - k0 > 1)

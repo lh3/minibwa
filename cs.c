@@ -130,7 +130,7 @@ void mb_write_MD(void *km, kstring_t *s, const uint8_t *tseq, const uint8_t *qse
 {
 	int i, q_off, t_off, l_MD = 0;
 	char *tmp;
-	km_sprintf_lite(km, s, "\tMD:Z:");
+	km_sprintf_lite(km, s, "MD:Z:");
 	tmp = alloc_tmp(km, r);
 	for (i = q_off = t_off = 0; i < (int)r->p->n_cigar; ++i) {
 		int j, op = r->p->cigar[i]&0xf, len = r->p->cigar[i]>>4;
