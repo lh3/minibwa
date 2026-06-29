@@ -23,7 +23,7 @@ int main_bench(int argc, char *argv[]);
 
 static int usage(FILE *fp, int is_long)
 {
-	fprintf(fp, "Usage: minibwt <command> <arguments>\n");
+	fprintf(fp, "Usage: minibwa <command> <arguments>\n");
 	fprintf(fp, "Commands:\n");
 	if (is_long) {
 		fprintf(fp, "  General:\n");
