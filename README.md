@@ -122,7 +122,8 @@ The master branch is optionally built on the following projects:
 Notably, the master branch includes GPL'd [bwtgen.c](bwtgen.c) for low-memory
 BWT construction. If you compile this file, which is the default, the resulting
 binary will be GPL'd. You can disable the low-memory algorithm with `make
-gpl=0`. The [Apache2 branch][apache2] does not include GPL'd source code.
+gpl=0` to generate non-GPL binary. The [Apache2 branch][apache2] does not
+include GPL'd source code.
 
 ## Limitations
 
