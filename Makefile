@@ -4,7 +4,7 @@ CPPFLAGS=
 LDFLAGS=
 INCLUDES=
 LOBJS=		kommon.o kalloc.o bwt.o l2bit.o options.o seed.o map-algo.o lchain.o align.o pe.o cs.o format.o \
-			ksw2_extz2_sse.o ksw2_extd2_sse.o ksw2_ll_sse.o
+			ksw2_extz2_sse.o $(EXTD2_OBJS) ksw2_ll_sse.o
 AOBJS=		kthread.o libsais.o libsais64.o index.o bseq.o map-main.o fastmap.o
 MALLOC_O=	mimalloc.o
 PROG=		minibwa
@@ -38,6 +38,16 @@ ifeq ($(ARCH), x86_64)
 	CFLAGS+=-msse4.2 -mpopcnt
 endif
 
+# Dual-gap extension (ksw_extd2): a dispatcher chooses AVX-512BW / AVX2 / SSE4.2
+# at RUNTIME via __builtin_cpu_supports (one portable binary). The wide kernels
+# only accelerate the gap-fill path; everything else delegates to the original
+# 128-bit kernel (built as ksw2_extd2_ref.o). Non-x86 uses the original directly.
+ifeq ($(ARCH), x86_64)
+	EXTD2_OBJS= ksw2_extd2_dispatch.o ksw2_extd2_ref.o ksw2_extd2_avx2.o ksw2_extd2_avx512.o
+else
+	EXTD2_OBJS= ksw2_extd2_dispatch.o ksw2_extd2_ref.o
+endif
+
 .SUFFIXES:.c .o
 .PHONY:all clean depend
 
@@ -45,6 +55,20 @@ endif
 		$(CC) -c $(CFLAGS) $(CPPFLAGS) $(INCLUDES) $< -o $@
 
 all:$(PROG)
+
+# --- ksw_extd2 runtime ISA dispatch (keep below the default `all` target) ---
+# original 128-bit ksw_extd2 under a private symbol (full-featured fallback)
+ksw2_extd2_ref.o:ksw2_extd2_sse.c ksw2.h
+		$(CC) -c $(CFLAGS) $(CPPFLAGS) $(INCLUDES) -Dksw_extd2_sse=extd2_ref_impl ksw2_extd2_sse.c -o $@
+# runtime dispatcher (defines ksw_extd2_sse)
+ksw2_extd2_dispatch.o:ksw2_extd2_dispatch.c ksw2.h
+		$(CC) -c $(CFLAGS) $(CPPFLAGS) $(INCLUDES) ksw2_extd2_dispatch.c -o $@
+ifeq ($(ARCH), x86_64)
+ksw2_extd2_avx2.o:ksw2_extd2_wide.c ksw2_wide_simd.h ksw2.h
+		$(CC) -c $(CFLAGS) $(CPPFLAGS) $(INCLUDES) -mavx2 -Dksw_extd2_sse=ksw_extd2_avx2 ksw2_extd2_wide.c -o $@
+ksw2_extd2_avx512.o:ksw2_extd2_wide.c ksw2_wide_simd.h ksw2.h
+		$(CC) -c $(CFLAGS) $(CPPFLAGS) $(INCLUDES) -mavx512bw -Dksw_extd2_sse=ksw_extd2_avx512 ksw2_extd2_wide.c -o $@
+endif
 
 mimalloc.o:
 		$(CC) -c -std=gnu11 -O3 -Wall -Wextra -DNDEBUG -DMI_MALLOC_OVERRIDE -DMI_OSX_INTERPOSE=1 -DMI_OSX_ZONE=1 -Imimalloc mimalloc/static.c -o $@
@@ -76,7 +100,6 @@ index.o: libsais.h libsais64.h kommon.h ketopt.h mbpriv.h minibwa.h l2bit.h
 index.o: bwt.h bseq.h
 kalloc.o: kalloc.h
 kommon.o: kommon.h
-ksw2_extd2_sse.o: ksw2.h
 ksw2_extz2_sse.o: ksw2.h
 ksw2_ll_sse.o: ksw2.h
 kthread.o: kthread.h
