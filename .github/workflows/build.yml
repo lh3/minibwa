@@ -22,4 +22,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: make -j$(nproc || sysctl -n hw.ncpu)
-      - run: make -j$(nproc || sysctl -n hw.ncpu) -C api-test
+      - run: make -j$(nproc || sysctl -n hw.ncpu) examples
+      - run: cmake -S . -B build/cmake -DMINIBWA_BUILD_EXAMPLES=ON
+      - run: cmake --build build/cmake --parallel $(nproc || sysctl -n hw.ncpu)

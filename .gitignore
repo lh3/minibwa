@@ -1,6 +1,16 @@
 .*.swp
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
 *.o
 *.a
 Makefile.bak
 minibwa
+examples/mbmap-one
+examples/mbmap-batch
+aln.sam
+chrM-human.l2b
+chrM-human.mbw
 tmp

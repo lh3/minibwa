@@ -289,6 +289,9 @@ int main_index(int argc, char *argv[])
 		else if (c == 901) return usage_index(stdout, seed, sa_bit, n_thread);
 		else if (c == 902) is_meth = 1;
 	}
+#ifndef USE_GPL
+	(void)block_size;
+#endif
 	if (argc - o.ind == 0) return usage_index(stderr, seed, sa_bit, n_thread);
 
 	prefix = o.ind + 1 < argc? argv[o.ind+1] : argv[o.ind];

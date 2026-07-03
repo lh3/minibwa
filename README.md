@@ -9,8 +9,8 @@ git clone https://github.com/lh3/minibwa
 cd minibwa && make
 
 # with test data
-./minibwa index test/chrM-human.fa.gz chrM-human              # index the genome
-./minibwa map chrM-human test/chrM-read_?.fa.gz > aln.sam     # align and output in SAM
+./minibwa index tests/data/chrM-human.fa.gz chrM-human              # index the genome
+./minibwa map chrM-human tests/data/chrM-read_?.fa.gz > aln.sam     # align and output in SAM
 
 # other examples without test data
 minibwa map -ft16 ref.index long-read.fq > aln.paf            # align long reads
@@ -59,6 +59,11 @@ make gpl=0       # disable GPL'd code for low-memory BWT building (no effect on 
 make mimalloc=0  # disable mimalloc and use the system malloc+kalloc instead
 ```
 This produces a single binary `minibwa` which you can copy to your `PATH`.
+Minibwa also supports CMake for package-manager and IDE integrations:
+```sh
+cmake -S . -B build/cmake
+cmake --build build/cmake
+```
 
 ### Usage
 
@@ -101,10 +106,18 @@ The output minibwa alignment is also not identical to bwa-mem.
 ## Developers' Guide
 
 Minibwa provides basic APIs for loading index and aligning reads.
-[api-test/ex-one.c](api-test/ex-one.c) shows an example to align each read
-independently; [api-test/ex-batch.c](api-test/ex-batch.c) aligns multiple reads
-in batch, which is faster and also supports paired-end mapping.
-[dev.md](dev.md) explains how minibwa differs from BWA-MEM and minimap2.
+[examples/ex-one.c](examples/ex-one.c) shows an example to align each read
+independently; [examples/ex-batch.c](examples/ex-batch.c) aligns multiple reads
+in batch, which is faster and also supports paired-end mapping. Run `make
+examples` to build both examples.
+[docs/dev.md](docs/dev.md) explains how minibwa differs from BWA-MEM and minimap2.
+
+### Project layout
+
+Project-owned implementation lives in [src](src), public headers in
+[include](include), bundled dependencies in [third_party](third_party), API
+examples in [examples](examples), test data in [tests/data](tests/data), and
+paper/manpage sources in [docs](docs).
 
 ## License
 
@@ -119,11 +132,11 @@ The master branch is optionally built on the following projects:
  * QSufSort: HPND License. Copyright (c) 1999 N. Jesper Larsson
  * bwtgen: GPL 2 License. Copyright (c) 2004 Wong Chi Kwong
 
-Notably, the master branch includes GPL'd [bwtgen.c](bwtgen.c) for low-memory
-BWT construction. If you compile this file, which is the default, the resulting
-binary will be GPL'd. You can disable the low-memory algorithm with `make
-gpl=0` to generate non-GPL binary. The [Apache2 branch][apache2] does not
-include GPL'd source code.
+Notably, the master branch includes GPL'd [bwtgen.c](third_party/bwtgen/bwtgen.c)
+for low-memory BWT construction. If you compile this file, which is the default,
+the resulting binary will be GPL'd. You can disable the low-memory algorithm
+with `make gpl=0` or `cmake -DMINIBWA_ENABLE_GPL=OFF` to generate non-GPL
+binary. The [Apache2 branch][apache2] does not include GPL'd source code.
 
 ## Limitations
 
