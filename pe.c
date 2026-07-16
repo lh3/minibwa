@@ -460,9 +460,9 @@ static int32_t mb_matesw(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_
 
 void mb_pair(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_t n_hit[2], mb_hit_t *hit[2], const mb_pestat_t pes[4], int32_t qlen[2], char *const qseq[2])
 {
-	int32_t r, i, dp_max_se[2], score_se, do_matesw, is_meth = !!(opt->flag & MB_F_METH);
+	const int32_t pe_bonus = 4;
+	int32_t r, i, dp_max_se[2], score_se, dp_max_se2[2], score_se2, do_matesw, is_meth = !!(opt->flag & MB_F_METH);
 	mb_pairaux_t paux;
-	mb_hit_t *h[2];
 	int32_t seed_ratio[2], min_seed_ratio;
 
 	if (n_hit[0] == 0 && n_hit[1] == 0) return;
@@ -490,30 +490,42 @@ void mb_pair(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_t n_hit[2], 
 	if (paux.n_pp == 0) goto end_pairing;
 
 	for (r = 0; r < 2; ++r) {
-		for (dp_max_se[r] = 0, i = 0; i < n_hit[r]; ++i)
+		for (dp_max_se[r] = dp_max_se2[r] = 0, i = 0; i < n_hit[r]; ++i) {
 			if (dp_max_se[r] < hit[r][i].p->dp_max)
-				dp_max_se[r] = hit[r][i].p->dp_max;
+				dp_max_se2[r] = dp_max_se[r], dp_max_se[r] = hit[r][i].p->dp_max;
+			else if (dp_max_se2[r] < hit[r][i].p->dp_max)
+				dp_max_se2[r] = hit[r][i].p->dp_max;
+		}
 	}
 	score_se = dp_max_se[0] + dp_max_se[1];
+	score_se2 = dp_max_se2[0] + dp_max_se2[1];
 
-	h[0] = &hit[0][paux.i[0]];
-	h[1] = &hit[1][paux.i[1]];
-	if (paux.score >= score_se - opt->pen_unpair * opt->a) {
-		int32_t mapq_pe, score2 = paux.sub_sc;
+	mb_sync_high_cov(n_hit[0], hit[0]);
+	mb_sync_high_cov(n_hit[1], hit[1]);
+	if (paux.score >= score_se - opt->pen_unpair * opt->a) { // choose the paired hits
+		int32_t mapq_pe, score2 = paux.sub_sc, diff;
 		double identity;
-		mb_sync_high_cov(n_hit[0], hit[0]);
-		mb_sync_high_cov(n_hit[1], hit[1]);
+		mb_hit_t *h[2];
+		h[0] = &hit[0][paux.i[0]];
+		h[1] = &hit[1][paux.i[1]];
+		assert(n_hit[0] > 0 && n_hit[1] > 0);
 		identity = (double)(h[0]->mlen + h[1]->mlen) / (h[0]->blen + h[1]->blen);
 		if ((h[0]->id != h[0]->parent || h[1]->id != h[1]->parent) && score2 < score_se - opt->pen_unpair * opt->a)
 			score2 = score_se - opt->pen_unpair * opt->a;
-		mapq_pe = (int)(6.02 * identity * identity * (paux.score - score2) / opt->a - 4.343 * log(paux.n_sub + 1) + .499);
+		diff = paux.score - score2;
+		if (diff > paux.score + pe_bonus * opt->a - score_se2) // inspired by dragmap
+			diff = paux.score + pe_bonus * opt->a - score_se2;
+		mapq_pe = (int)(6.02 * identity * identity * diff / opt->a - 4.343 * log(paux.n_sub + 1) + .499);
+		if (mapq_pe < 0) mapq_pe = 0;
 		mapq_pe = (int)(mapq_pe * (1. - .5 * (h[0]->frac_high / 255. + h[1]->frac_high / 255.)) + .499);
 		if (min_seed_ratio < 50) mapq_pe *= (double)min_seed_ratio * min_seed_ratio / 2500.0;
 		if (mapq_pe > 60) mapq_pe = 60;
-		if (mapq_pe == 0 && paux.score > score2) mapq_pe = 1;
+		if (mapq_pe <= 0 && paux.score > score2) mapq_pe = 1;
 		for (r = 0; r < 2; ++r) {
-			if (h[r]->mapq < mapq_pe)
-				h[r]->mapq = (int32_t)(.2 * h[r]->mapq + .8 * mapq_pe + .499);
+			if (n_hit[r] == 1) // if this read only has one hit, take max(mapq_se,mapq_pe)
+				h[r]->mapq = h[r]->mapq > mapq_pe? h[r]->mapq : mapq_pe;
+			else // if this read has multiple hits, cap mapq and penalize if mapq_se is small
+				h[r]->mapq = h[r]->mapq > mapq_pe? mapq_pe : (int32_t)(.2 * h[r]->mapq + .8 * mapq_pe + .499);
 			if (h[r]->id != h[r]->parent) { // then lift the paired hit to primary and update parent
 				mb_hit_t *p = &hit[r][h[r]->parent];
 				for (i = 0; i < n_hit[r]; ++i)
@@ -534,6 +546,12 @@ void mb_pair(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_t n_hit[2], 
 				}
 			}
 		}
+	} else { // choose the unpaired hits
+		int32_t diff = score_se - opt->pen_unpair * opt->a - paux.score;
+		int32_t mapq_pe = 6 * diff / opt->a;
+		for (r = 0; r < 2; ++r)
+			for (i = 0; i < n_hit[r]; ++i)
+				hit[r][i].mapq = hit[r][i].mapq < mapq_pe? hit[r][i].mapq : mapq_pe;
 	}
 end_pairing:
 	mb_set_sam_pri(n_hit[0], hit[0], !!(opt->flag & MB_F_PRIMARY5));
