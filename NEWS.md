@@ -1,3 +1,21 @@
+Release 0.4-r400 (12 July 2026)
+-------------------------------
+
+Notable changes:
+
+ * Improvement: penalize heavily clipped alignment when rescoring. Older
+   minibwa may produce a clipped primary alignment together with an end-to-end
+   supplementary alignment with more mismatches/gaps. While often neither
+   alignment is correct, having them both is confusing. This happens very
+   rarely.
+
+ * Bugfix: subcommand name was missing from the PG-CL tag in output SAM (#46).
+   Also fixed a few typos in command-line help messages (#48 and #49).
+
+(0.4: 12 July 2026, r400)
+
+
+
 Release 0.3-r391 (28 June 2026)
 -------------------------------
 

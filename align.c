@@ -846,7 +846,7 @@ static double mb_event_identity(const mb_hit_t *r)
 	return (double)r->mlen / (r->blen + r->p->n_ambi - n_gap + n_gapo);
 }
 
-static int32_t mb_recal_max_dp(const mb_hit_t *r, double b2, int32_t match_sc)
+static int32_t mb_recal_max_dp(const mb_hit_t *r, double b2, int32_t match_sc, int32_t qlen)
 {
 	uint32_t i;
 	int32_t n_gap = 0, n_mis;
@@ -860,6 +860,7 @@ static int32_t mb_recal_max_dp(const mb_hit_t *r, double b2, int32_t match_sc)
 		}
 	}
 	n_mis = r->blen + r->p->n_ambi - r->mlen - n_gap;
+	n_mis += (int32_t)((qlen - (r->qe - r->qs)) / b2 + .499);
 	return (int32_t)(match_sc * (r->mlen - b2 * n_mis - gap_cost) + .499);
 }
 
@@ -881,11 +882,12 @@ void mb_update_dp_max(int qlen, int n_regs, mb_hit_t *regs, double frac, int a, 
 	if (div < 0.02) div = 0.02;
 	b2 = 0.5 / div; // max value: 25
 	if (b2 * a < b) b2 = (double)a / b;
-	for (i = 0; i < n_regs; ++i) {
+	for (i = 0, max = -1, max_i = -1; i < n_regs; ++i) {
 		mb_hit_t *r = &regs[i];
 		if (r->p == 0) continue;
-		r->p->dp_max = mb_recal_max_dp(r, b2, a);
+		r->p->dp_max = mb_recal_max_dp(r, b2, a, qlen);
 		if (r->p->dp_max < 0) r->p->dp_max = 0;
+		if (max < r->p->dp_max) max = r->p->dp_max, max_i = i;
 	}
 }
 

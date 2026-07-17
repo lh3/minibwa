@@ -1,6 +1,7 @@
-[![Build Status](https://github.com/lh3/minibwa/actions/workflows/build.yml/badge.svg)](https://github.com/lh3/minibwa/actions)
-[![Bioconda](https://img.shields.io/conda/dn/bioconda/minibwa.svg?style=flag&label=Bioconda)](https://anaconda.org/bioconda/minibwa)
+[![GitHub Downloads](https://img.shields.io/github/downloads/lh3/minibwa/total.svg?style=social&logo=github&label=Download)](https://github.com/lh3/minibwa/releases)
+[![Bioconda](https://img.shields.io/conda/dn/bioconda/minibwa.svg?style=flag&label=bioconda)](https://bioconda.github.io/recipes/minibwa/README.html)
 [![Homebrew](https://img.shields.io/homebrew/v/minibwa)](https://formulae.brew.sh/formula/minibwa)
+[![Build Status](https://github.com/lh3/minibwa/actions/workflows/build.yml/badge.svg)](https://github.com/lh3/minibwa/actions)
 [![preprint](https://img.shields.io/badge/arXiv-2606.15357-blue)](https://arxiv.org/abs/2606.15357)
 
 ## Getting Started
@@ -122,7 +123,8 @@ The master branch is optionally built on the following projects:
 Notably, the master branch includes GPL'd [bwtgen.c](bwtgen.c) for low-memory
 BWT construction. If you compile this file, which is the default, the resulting
 binary will be GPL'd. You can disable the low-memory algorithm with `make
-gpl=0`. The [Apache2 branch][apache2] does not include GPL'd source code.
+gpl=0` to generate non-GPL binary. The [Apache2 branch][apache2] does not
+include GPL'd source code.
 
 ## Limitations
 
