@@ -109,22 +109,15 @@ in batch, which is faster and also supports paired-end mapping.
 
 ## License
 
-Minibwa is distributed under the MIT license. It also incorporates source code
-from the following projects:
+This Apache2 branch of minibwa is distributed under the Apache2 license. It
+also includes source code from the following projects:
 
  * libsais: Apache 2 License. Copyright (c) 2021-2025 Ilya Grebnov
  * mimalloc: MIT License. Copyright (c) 2018-2026 Microsoft Corporation, Daan Leijen
 
-The master branch is optionally built on the following projects:
-
- * QSufSort: HPND License. Copyright (c) 1999 N. Jesper Larsson
- * bwtgen: GPL 2 License. Copyright (c) 2004 Wong Chi Kwong
-
-Notably, the master branch includes GPL'd [bwtgen.c](bwtgen.c) for low-memory
-BWT construction. If you compile this file, which is the default, the resulting
-binary will be GPL'd. You can disable the low-memory algorithm with `make
-gpl=0` to generate non-GPL binary. The [Apache2 branch][apache2] does not
-include GPL'd source code.
+This branch does not include GPL'd low-memory BWT construction algorithm. If
+you want to build a large index in limited memory, use the master branch. The
+resulting index is byte-identical regardless of the algorithm in use.
 
 ## Limitations
 
