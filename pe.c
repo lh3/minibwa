@@ -461,6 +461,7 @@ static int32_t mb_matesw(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_
 void mb_pair(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_t n_hit[2], mb_hit_t *hit[2], const mb_pestat_t pes[4], int32_t qlen[2], char *const qseq[2])
 {
 	const int32_t pe_bonus = 4;
+	const int32_t pe_rep_span = 3; // treat a 2nd locus within this many mismatches as a near-tie
 	int32_t r, i, dp_max_se[2], score_se, dp_max_se2[2], score_se2, do_matesw, is_meth = !!(opt->flag & MB_F_METH);
 	mb_pairaux_t paux;
 	int32_t seed_ratio[2], min_seed_ratio;
@@ -504,7 +505,7 @@ void mb_pair(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_t n_hit[2], 
 	mb_sync_high_cov(n_hit[1], hit[1]);
 	if (paux.score >= score_se - opt->pen_unpair * opt->a) { // choose the paired hits
 		int32_t mapq_pe, score2 = paux.sub_sc, diff;
-		double identity;
+		double identity, f_high, amb[2];
 		mb_hit_t *h[2];
 		h[0] = &hit[0][paux.i[0]];
 		h[1] = &hit[1][paux.i[1]];
@@ -517,7 +518,13 @@ void mb_pair(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_t n_hit[2], 
 			diff = paux.score + pe_bonus * opt->a - score_se2;
 		mapq_pe = (int)(6.02 * identity * identity * diff / opt->a - 4.343 * log(paux.n_sub + 1) + .499);
 		if (mapq_pe < 0) mapq_pe = 0;
-		mapq_pe = (int)(mapq_pe * (1. - .5 * (h[0]->frac_high / 255. + h[1]->frac_high / 255.)) + .499);
+		f_high = .5 * (h[0]->frac_high + h[1]->frac_high) / 255.;
+		for (r = 0; r < 2; ++r) { // frac_high misses low-copy repeats; use the 2nd best locus
+			double g = dp_max_se2[r] > 0? (double)(dp_max_se[r] - dp_max_se2[r]) / (opt->a + opt->b) : pe_rep_span;
+			amb[r] = g < pe_rep_span? 1. - g / pe_rep_span : 0.;
+		}
+		// only penalize if both ends are ambiguous, or mate rescue is lost
+		mapq_pe = (int)(mapq_pe * (1. - f_high) * (1. - (amb[0] < amb[1]? amb[0] : amb[1])) + .499);
 		if (min_seed_ratio < 50) mapq_pe *= (double)min_seed_ratio * min_seed_ratio / 2500.0;
 		if (mapq_pe > 60) mapq_pe = 60;
 		if (mapq_pe <= 0 && paux.score > score2) mapq_pe = 1;
