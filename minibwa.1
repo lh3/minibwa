@@ -349,12 +349,17 @@ in size. If there are less than 40000 sequences in the batch, continue to read
 until the size reaches
 .IR NUM2 .
 .TP
-.BR --mmap
+.BR --mmap [= lite ]
 Load the index by mapping the index files to RAM. With this option, the
 first index loading time will be slower but the following index loading will be
-faster if the index remains in RAM. Multiple minibwa processes on the same
-machine can also use the same index without duplicating it. On most systems,
-this option reduces the alignment speed.
+faster if the index remains in RAM. The optional
+.B lite
+argument further reduces hot loading time but may greatly increase cold loading
+time sometimes. With
+.BR --mmap ,
+multiple minibwa processes on the same machine can also use the same index
+without duplicating it in memory. Mapping may be slower depending on the
+system.
 .TP
 .B --version
 Print version number
