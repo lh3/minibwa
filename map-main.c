@@ -218,9 +218,18 @@ static void *worker_pipeline(void *shared, int step, void *in)
 					int32_t n_sec = 0;
 					for (j = 0; j < s->n_hit[i]; ++j) {
 						const mb_hit_t *h = &s->hit[i][j];
-						if (h->parent == h->id || n_sec < opt->out_n)
+						if (h->parent == h->id || n_sec < opt->out_n) {
+							if (h->parent != h->id) {
+								const mb_hit_t *p = &s->hit[i][h->parent];
+								if (p->p && h->p) {
+									if (h->p->dp_max < (double)opt->out_s * p->p->dp_max) continue;
+								} else {
+									if (h->score < (double)opt->out_s * p->score) continue;
+								}
+							}
 							mb_format(km, &out, idx->l2b, t, seg_en - seg_st, &s->n_hit[seg_st], &s->hit[seg_st], j, opt, i - seg_st, mate_qlen);
-						n_sec += (h->parent != h->id);
+							n_sec += (h->parent != h->id);
+						}
 					}
 				} else if (!(opt->flag & MB_F_NO_UNMAP)) {
 					mb_format(km, &out, idx->l2b, t, seg_en - seg_st, &s->n_hit[seg_st], &s->hit[seg_st], -1, opt, i - seg_st, mate_qlen);
@@ -337,6 +346,7 @@ static ko_longopt_t long_options[] = {
 	{ "xa",           ko_required_argument, 312 },
 	{ "mmap",         ko_optional_argument, 313 },
 	{ "xa-ratio",     ko_required_argument, 314 },
+	{ "outs",         ko_required_argument, 315 },
 	{ "dbg-aln-seq",  ko_no_argument,       601 },
 	{ "dbg-anchor",   ko_no_argument,       602 },
 	{ "dbg-seed",     ko_no_argument,       603 },
@@ -385,8 +395,9 @@ static int usage_map(FILE *fp, const mb_opt_t *opt)
 	fprintf(fp, "  Input/Output:\n");
 	fprintf(fp, "    -o FILE          output file name [stdout]\n");
 	fprintf(fp, "    -u               don't output unmapped reads\n");
-	fprintf(fp, "    --outn=NUM       output up to INT secondary alignments [0]\n");
-	fprintf(fp, "    --xa=NUM         if <=NUM hits with score >%g%% of the best hit, output them to XA [%d]\n", opt->xa_ratio*100.0, opt->xa_max);
+	fprintf(fp, "    --outn=NUM       output up to {NUM,-N} secondary alignments [0]\n");
+	fprintf(fp, "    --outs=FLOAT     output a secondary hit if score at least FLOAT*bestScore [%g]\n", opt->out_s);
+	fprintf(fp, "    --xa=NUM         if <=NUM hits with score >%g%% of the best hit, output them to XA [%d]\n", opt->out_s*100.0, opt->xa_max);
 	fprintf(fp, "    -y               copy FASTA/Q comments to output\n");
 	fprintf(fp, "    -Y               use soft clipping for supplementary alignments\n");
 	fprintf(fp, "    -H STR           if STR starts with @, insert to header; or insert lines in file STR []\n");
@@ -501,8 +512,8 @@ int main_map(int argc, char *argv[])
 		} else if (c == 313) { // --mmap
 			use_mmap = 1;
 			if (o.arg != 0 && strcmp(o.arg, "lite") == 0) mmap_preload = 0;
-		} else if (c == 314) { // --xa-ratio
-			mo.xa_ratio = atof(o.arg);
+		} else if (c == 314 || c == 315) { // --outs or --xa-ratio
+			mo.out_s = atof(o.arg);
 		} else if (c == 601) { // --dbg-aln-seq
 			kom_dbg_flag |= MB_DBG_ALN_SEQ;
 		} else if (c == 602) { // --dbg-anchor
@@ -602,7 +613,7 @@ static int usage_mem(FILE *fp, const mb_opt_t *opt)
 	fprintf(fp, "    -v INT         verbose level: 1=error, 2=warning, 3=message, 4+=debugging [%d]\n", kom_verbose);
 	fprintf(fp, "    -T INT         suppress alignment with DP score lower than INT*{-A} [%d]\n", opt->min_dp_max);
 	fprintf(fp, "    -h INT         max secondary alignments at the XA tag [%d]\n", opt->xa_max);
-	fprintf(fp, "    -z FLOAT       skip XA if score < FLOAT*bestScore [%g]\n", opt->xa_ratio);
+	fprintf(fp, "    -z FLOAT       skip XA if score < FLOAT*bestScore [%g]\n", opt->out_s);
 	fprintf(fp, "    -a             output all alignments\n");
 	fprintf(fp, "    -C             copy FASTA/Q comments to output\n");
 	fprintf(fp, "    *V             output the reference FASTA header in the XR tag\n");
@@ -647,7 +658,7 @@ int main_mem(int argc, char *argv[])
 		else if (c == 'p' || c == 'j' || c == 'q' || c == 'K' || c == 'V' || c == 'M' || c == 'u') {}
 		else if (c == 'a') mo.out_n = 1000000;
 		else if (c == 'h') mo.xa_max = atoi(o.arg);
-		else if (c == 'z') mo.xa_ratio = atof(o.arg);
+		else if (c == 'z') mo.out_s = atof(o.arg);
 		else if (c == 'R') rg_line = o.arg;
 		else if (c == 'H') mb_insert_hdr(&hdr_ins, o.arg);
 		else if (c == 'o') fn_out = o.arg;

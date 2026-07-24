@@ -1,4 +1,4 @@
-.TH minibwa 1 "20 July 2026" "minibwa-0.4 (r411-dirty)" "Bioinformatics tools"
+.TH minibwa 1 "24 July 2026" "minibwa-0.4 (r412-dirty)" "Bioinformatics tools"
 .SH NAME
 .PP
 minibwa - short/long-read alignment against a reference genome
@@ -172,7 +172,7 @@ occurrences if there are too many.
 .TP
 .BI -g \ NUM
 Stop chain enlongation if there are no minimizers within
-.BR NUM -bp
+.IR NUM -bp
 [5000]. Also used for extending from the first and last anchors during base
 alignment.
 .TP
@@ -307,18 +307,20 @@ Don't output unmapped reads
 .TP
 .BR --outn = \fINUM
 Output up to
-.I INT
+.RI min( INT ,{\fB-N\fR})
 secondary alignments [0]. Primary and supplementary alignments are always outputted.
+.TP
+.BR --outs = \fIFLOAT
+Output a secondary hit if its score is above
+.I FLOAT
+times the primary alignment score [0.8]. This option also controls the XA tag.
 .TP
 .BR --xa = \fINUM
 If there are
 .RI >= NUM
-secondary hits of score above 80% of the best hit, output all of them to the XA tag [5]
-.TP
-.BR --xa-ratio = \fIFLOAT
-A secondary hit is considered in the XA tag if its score is above
-.I FLOAT
-times the primary alignment score [0.8].
+secondary hits of score above
+.RB { --outs }
+times the primary alignment score, output all of them to the XA tag [5]
 .TP
 .B -y
 Copy FASTA/Q comments to output

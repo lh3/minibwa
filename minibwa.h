@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define MB_VERSION "0.4-r411-dirty"
+#define MB_VERSION "0.4-r412-dirty"
 
 #define MB_F_PAF              (0x1LL)       // output in the PAF format
 #define MB_F_NO_UNMAP         (0x2LL)       // output unmapped query sequences
@@ -77,9 +77,9 @@ typedef struct {
 	int32_t sb_seq;   // number of sequences for batch smem
 	int32_t n_thread; // number of worker threads, excluding I/O threads
 	int32_t out_n;    // max number of secondary alignments to output
+	float out_s;
 	int32_t seed;
 	int32_t xa_max;
-	float xa_ratio;
 	int64_t mb_size;  // mini-batch size
 	int64_t max_mb_size;
 	int64_t max_sw_mat;
