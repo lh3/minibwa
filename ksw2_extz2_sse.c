@@ -13,17 +13,36 @@
 #error "Missing SSE2 or NEON intrinsics"
 #endif
 
+/* not a general _mm_shuffle_epi8: vqtbl1q_u8 zeroes any index >= 16 where SSSE3
+ * only zeroes on bit 7. Every index built below is <= 12, so the two agree. */
+#if defined(__ARM_NEON)
+static inline __m128i ksw_shuffle_epi8(__m128i a, __m128i b) { return vqtbl1q_u8(a, b); }
+static inline __m128i ksw_xor_si128(__m128i a, __m128i b) { return veorq_u8(a, b); }
+#else
+static inline __m128i ksw_shuffle_epi8(__m128i a, __m128i b) { return _mm_shuffle_epi8(a, b); }
+static inline __m128i ksw_xor_si128(__m128i a, __m128i b) { return _mm_xor_si128(a, b); }
+#endif
+
+static inline __m128i ksw_alignr15(__m128i cur, __m128i prev) /* {prev[15], cur[0..14]} */
+{
+#if defined(__ARM_NEON)
+	return vextq_u8(prev, cur, 15);
+#elif defined(__SSSE3__) || defined(__SSE4_1__)
+	return _mm_alignr_epi8(cur, prev, 15);
+#else
+	return _mm_or_si128(_mm_slli_si128(cur, 1), _mm_srli_si128(prev, 15));
+#endif
+}
+
 void ksw_extz2_sse(void *km, int qlen, const uint8_t *query, int tlen, const uint8_t *target, int8_t m, const int8_t *mat, int8_t q, int8_t e, int w, int zdrop, int end_bonus, int flag, ksw_extz_t *ez)
 {
 #define __dp_code_block1 \
-	z = _mm_add_epi8(_mm_load_si128(&s[t]), qe2_); \
-	xt1 = _mm_load_si128(&x[t]);                     /* xt1 <- x[r-1][t..t+15] */ \
-	tmp = _mm_srli_si128(xt1, 15);                   /* tmp <- x[r-1][t+15] */ \
-	xt1 = _mm_or_si128(_mm_slli_si128(xt1, 1), x1_); /* xt1 <- x[r-1][t-1..t+14] */ \
+	z = _mm_load_si128(&s[t]);  /* s[] is pre-biased by (q+e)*2 in the prepass */ \
+	tmp = _mm_load_si128(&x[t]);                     /* tmp <- x[r-1][t..t+15] */ \
+	xt1 = ksw_alignr15(tmp, x1_);                   /* xt1 <- x[r-1][t-1..t+14] */ \
 	x1_ = tmp; \
-	vt1 = _mm_load_si128(&v[t]);                     /* vt1 <- v[r-1][t..t+15] */ \
-	tmp = _mm_srli_si128(vt1, 15);                   /* tmp <- v[r-1][t+15] */ \
-	vt1 = _mm_or_si128(_mm_slli_si128(vt1, 1), v1_); /* vt1 <- v[r-1][t-1..t+14] */ \
+	tmp = _mm_load_si128(&v[t]);                     /* tmp <- v[r-1][t..t+15] */ \
+	vt1 = ksw_alignr15(tmp, v1_);                   /* vt1 <- v[r-1][t-1..t+14] */ \
 	v1_ = tmp; \
 	a = _mm_add_epi8(xt1, vt1);                      /* a <- x[r-1][t-1..t+14] + v[r-1][t-1..t+14] */ \
 	ut = _mm_load_si128(&u[t]);                      /* ut <- u[t..t+15] */ \
@@ -42,7 +61,8 @@ void ksw_extz2_sse(void *km, int qlen, const uint8_t *query, int tlen, const uin
 	int with_cigar = !(flag&KSW_EZ_SCORE_ONLY), approx_max = !!(flag&KSW_EZ_APPROX_MAX);
 	int32_t *H = 0, H0 = 0, last_H0_t = 0;
 	uint8_t *qr, *sf, *mem, *mem2 = 0;
-	__m128i q_, qe2_, zero_, flag1_, flag2_, flag8_, flag16_, sc_mch_, sc_mis_, sc_N_, m1_, max_sc_;
+	__m128i q_, zero_, flag1_, flag2_, flag8_, flag16_, max_sc_, pmat_;
+	int use_lut;
 	__m128i *u, *v, *x, *y, *s, *p = 0;
 
 	ksw_reset_extz(ez);
@@ -50,16 +70,22 @@ void ksw_extz2_sse(void *km, int qlen, const uint8_t *query, int tlen, const uin
 
 	zero_   = _mm_set1_epi8(0);
 	q_      = _mm_set1_epi8(q);
-	qe2_    = _mm_set1_epi8((q + e) * 2);
 	flag1_  = _mm_set1_epi8(1);
 	flag2_  = _mm_set1_epi8(2);
 	flag8_  = _mm_set1_epi8(0x08);
 	flag16_ = _mm_set1_epi8(0x10);
-	sc_mch_ = _mm_set1_epi8(mat[0]);
-	sc_mis_ = _mm_set1_epi8(mat[1]);
-	sc_N_   = mat[m*m-1] == 0? _mm_set1_epi8(-e) : _mm_set1_epi8(mat[m*m-1]);
-	m1_     = _mm_set1_epi8(m - 1); // wildcard
 	max_sc_ = _mm_set1_epi8(mat[0] + (q + e) * 2);
+	// XOR-indexed substitution LUT, pre-biased by (q+e)*2 so the DP add vanishes
+	use_lut = !(flag & KSW_EZ_GENERIC_SC);
+	if (use_lut) {
+		int8_t pmat[16], bias = (int8_t)((q + e) * 2);
+		int8_t w_N = mat[m*m-1] == 0? (int8_t)-e : mat[m*m-1];
+		int lt;
+		pmat[0] = mat[0] + bias;
+		pmat[1] = pmat[2] = pmat[3] = mat[1] + bias;
+		for (lt = 4; lt < 16; ++lt) pmat[lt] = w_N + bias;
+		pmat_ = _mm_loadu_si128((const __m128i*)pmat);
+	} else pmat_ = zero_;
 
 	if (w < 0) w = tlen > qlen? tlen : qlen;
 	wl = wr = w;
@@ -87,7 +113,14 @@ void ksw_extz2_sse(void *km, int qlen, const uint8_t *query, int tlen, const uin
 		off_end = off + qlen + tlen - 1;
 	}
 
-	for (t = 0; t < qlen; ++t) qr[t] = query[qlen - 1 - t];
+	if (use_lut) {
+		for (t = 0; t < qlen; ++t) {  /* query-N -> 8 keeps every XOR index <= 12 */
+			uint8_t c = query[qlen - 1 - t];
+			qr[t] = c == m - 1? 8 : c;
+		}
+	} else {
+		for (t = 0; t < qlen; ++t) qr[t] = query[qlen - 1 - t];
+	}
 	memcpy(sf, target, tlen);
 
 	for (r = 0, last_st = last_en = -1; r < qlen + tlen - 1; ++r) {
@@ -114,29 +147,23 @@ void ksw_extz2_sse(void *km, int qlen, const uint8_t *query, int tlen, const uin
 		} else x1 = 0, v1 = r? q : 0;
 		if (en >= r) ((uint8_t*)y)[r] = 0, u8[r] = r? q : 0;
 		// loop fission: set scores first
-		if (!(flag & KSW_EZ_GENERIC_SC)) {
+		if (use_lut) {
 			for (t = st0; t <= en0; t += 16) {
-				__m128i sq, st, tmp, mask;
+				__m128i sq, st;
 				sq = _mm_loadu_si128((__m128i*)&sf[t]);
 				st = _mm_loadu_si128((__m128i*)&qrr[t]);
-				mask = _mm_or_si128(_mm_cmpeq_epi8(sq, m1_), _mm_cmpeq_epi8(st, m1_));
-				tmp = _mm_cmpeq_epi8(sq, st);
-#ifdef __SSE4_1__
-				tmp = _mm_blendv_epi8(sc_mis_, sc_mch_, tmp);
-				tmp = _mm_blendv_epi8(tmp,     sc_N_,   mask);
-#else
-				tmp = _mm_or_si128(_mm_andnot_si128(tmp,  sc_mis_), _mm_and_si128(tmp,  sc_mch_));
-				tmp = _mm_or_si128(_mm_andnot_si128(mask, tmp),     _mm_and_si128(mask, sc_N_));
-#endif
-				_mm_storeu_si128((__m128i*)((uint8_t*)s + t), tmp);
+				_mm_storeu_si128((__m128i*)((uint8_t*)s + t),
+								 ksw_shuffle_epi8(pmat_, ksw_xor_si128(sq, st)));
 			}
 		} else {
+			/* Not table-driven, so this path carries the bias itself. */
 			for (t = st0; t <= en0; ++t)
-				((uint8_t*)s)[t] = mat[sf[t] * m + qrr[t]];
+				((uint8_t*)s)[t] = mat[sf[t] * m + qrr[t]] + (uint8_t)((q + e) * 2);
 		}
 		// core loop
-		x1_ = _mm_cvtsi32_si128(x1);
-		v1_ = _mm_cvtsi32_si128(v1);
+		// lane 15: ksw_alignr15() takes the carry from the top byte of the previous vector
+		x1_ = _mm_slli_si128(_mm_cvtsi32_si128(x1), 15);
+		v1_ = _mm_slli_si128(_mm_cvtsi32_si128(v1), 15);
 		st_ = st / 16, en_ = en / 16;
 		assert(en_ - st_ + 1 <= n_col_);
 		if (!with_cigar) { // score only
