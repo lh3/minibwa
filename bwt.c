@@ -404,6 +404,12 @@ void mb_bwt_smem_batch(void *km, const mb_bwt_t *bwt, int32_t n, mb_smem_entry_t
 				s->i += bwt->pre_len;
 				mb_bwt_set_intv(bwt, s->q[s->i--], &s->p);
 			}
+			// prefetch the occ blocks the upcoming first backward extension will
+			// read (mb_bwt_extend(.,is_back=1) hits x[0] and x[0]+size). Neither the
+			// k-mer cache hit nor the set_intv revert touches the occ array, so
+			// without this the first stage-3/6 step stalls on cold blocks.
+			mb_bwt_block_prefetch(bwt, s->p.x[0]);
+			mb_bwt_block_prefetch(bwt, s->p.x[0] + s->p.size);
 			s->stage++;
 		} else if (s->stage == 3) { // first backward pass; require ->{i,p}
 			if (s->i < s->x) { // move to the next stage
