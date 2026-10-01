@@ -1,3 +1,34 @@
+Unreleased
+----------
+
+Notable changes:
+
+ * New feature: BAM input. Minibwa reads BAM wherever it reads FASTA/FASTQ,
+   detecting the format from the file contents. Both unaligned and aligned BAM
+   work; for aligned input the old alignments are discarded and secondary and
+   supplementary records are skipped. Paired-end mode is turned on
+   automatically when the first record is flagged as paired.
+
+ * Bugfix: in `--meth` mode the bisulfite conversion was chosen from a read's
+   position within its fragment, so an unpaired read 2 -- which a BAM can carry
+   but a pair of FASTQ files cannot express -- was converted as if it were
+   read 1 and usually failed to map. With a BAM input the SAM FLAG now decides,
+   and the segment a read belongs to is carried through to the output FLAG, so
+   an unpaired read 2 is still reported as read 2 rather than as single-end.
+
+ * New feature: paired-end input is now validated. A coordinate-sorted BAM is
+   rejected in paired-end mode instead of being mapped as single-end, and two
+   query files whose reads are out of order are reported rather than silently
+   mispaired.
+
+ * New feature: with a BAM input, `@RG`, `@PG` and `@CO` header records and
+   per-record auxiliary tags such as `RX` are carried over to the output.
+   `@HD` and `@SQ` are replaced, as contigs come from the index, and tags
+   describing an alignment are dropped because minibwa recomputes them. Use
+   `--bam-tags=no` to copy no tags.
+
+
+
 Release 0.7-r421 (6 August, 2026)
 ---------------------------------
 

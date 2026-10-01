@@ -33,6 +33,14 @@ typedef struct {
 	mb_tbuf_t **tbuf;
 } step_t;
 
+// the BS-seq conversion of a read: from the FLAG for BAM, else from its position
+// in the fragment. A lone read 2 is legal input and must not be taken for read 1.
+static inline l2b_meth_t mb_meth_type(const mb_bseq1_t *t, int32_t j)
+{
+	if (t->flag & 0xc0) return (t->flag & 0x80)? L2B_METH_G2A : L2B_METH_C2T;
+	return (j&1) == 0? L2B_METH_C2T : L2B_METH_G2A;
+}
+
 static void worker_for_se_batch(void *data, long i, int tid)
 {
 	step_t *s = (step_t*)data;
@@ -62,7 +70,7 @@ static void worker_for_se_batch(void *data, long i, int tid)
 		int32_t cnt = s->seg_cnt[s->sb_off[i] + k];
 		for (j = 0; j < cnt; ++j) {
 			const mb_bseq1_t *t = &s->seq[off + j];
-			l2b_meth_t mt = !idx->is_meth? L2B_METH_NONE : (j&1) == 0? L2B_METH_C2T : L2B_METH_G2A;
+			l2b_meth_t mt = !idx->is_meth? L2B_METH_NONE : mb_meth_type(t, j);
 			len[p] = t->l_seq;
 			seq[p] = &buf[tot], tot += t->l_seq;
 			for (l = 0; l < t->l_seq; ++l)
@@ -83,7 +91,7 @@ static void worker_for_se_batch(void *data, long i, int tid)
 		for (j = 0; j < cnt; ++j) {
 			const mb_bseq1_t *t = &s->seq[off + j];
 			mb_opt_t opt_adap;
-			l2b_meth_t mt = !idx->is_meth? L2B_METH_NONE : (j&1) == 0? L2B_METH_C2T : L2B_METH_G2A;
+			l2b_meth_t mt = !idx->is_meth? L2B_METH_NONE : mb_meth_type(t, j);
 			mb_opt_adap(opt, t->l_seq, &opt_adap);
 			s->hit[off+j] = mb_map_sai(&opt_adap, idx, t->l_seq, t->seq, mt, &sai[p], &s->n_hit[off+j], b, t->name);
 			++p;
@@ -118,11 +126,12 @@ static void *worker_pipeline(void *shared, int step, void *in)
     if (step == 0) { // step 0: read sequences
 		int with_qual = !(opt->flag & MB_F_PAF);
 		int with_comment = !!(opt->flag & MB_F_COPY_COMMENT);
+		int with_aux = !(opt->flag & (MB_F_PAF|MB_F_NO_BAM_TAG));
 		int frag_mode = (p->n_fp > 1 || !!(opt->flag & MB_F_PE));
         step_t *s;
         s = kom_calloc(step_t, 1);
-		if (p->n_fp > 1) s->seq = mb_bseq_read_frag(p->n_fp, p->fp, p->mb_size, with_qual, with_comment, &s->n_seq);
-		else s->seq = mb_bseq_read(p->fp[0], p->mb_size, with_qual, with_comment, frag_mode, min_read_cnt, opt->max_mb_size, &s->n_seq);
+		if (p->n_fp > 1) s->seq = mb_bseq_read_frag(p->n_fp, p->fp, p->mb_size, with_qual, with_comment, with_aux, &s->n_seq);
+		else s->seq = mb_bseq_read(p->fp[0], p->mb_size, with_qual, with_comment, with_aux, frag_mode, min_read_cnt, opt->max_mb_size, &s->n_seq);
 		if (s->seq) {
 			int32_t sb_len, sb_off;
 			s->p = p;
@@ -141,7 +150,11 @@ static void *worker_pipeline(void *shared, int step, void *in)
 			// set seg_cnt[] and seg_off[]
 			for (i = 1, j = 0; i <= s->n_seq; ++i) {
 				if (i == s->n_seq || !frag_mode || !mb_qname_same(s->seq[i-1].name, s->seq[i].name)) {
-					assert(i - j <= 2);
+					if (i - j > 2) {
+						fprintf(stderr, "[ERROR] %d reads in a row are named '%s'; a fragment can hold at most two.\n", i - j, s->seq[j].name);
+						fprintf(stderr, "        give each fragment a unique name, or drop the extra records\n");
+						exit(1);
+					}
 					s->seg_cnt[s->n_frag] = i - j;
 					s->seg_off[s->n_frag++] = j;
 					if (i - j == 2) s->n_pe++;
@@ -239,9 +252,7 @@ static void *worker_pipeline(void *shared, int step, void *in)
 			for (i = seg_st; i < seg_en; ++i) {
 				for (j = 0; j < s->n_hit[i]; ++j) free(s->hit[i][j].p);
 				free(s->hit[i]);
-				free(s->seq[i].seq); free(s->seq[i].name);
-				if (s->seq[i].qual) free(s->seq[i].qual);
-				if (s->seq[i].comment) free(s->seq[i].comment);
+				mb_bseq_free1(&s->seq[i]);
 			}
 		}
 
@@ -273,18 +284,26 @@ static mb_bseq_file_t **mb_open_bseqs(int n, const char **fn)
 	return fp;
 }
 
-int32_t mb_map_file(const mb_opt_t *opt, const mb_idx_t *idx, int32_t n, const char **fn, const char *hdr, const char *fn_out)
+static void mb_close_bseqs(int n, mb_bseq_file_t **fp)
 {
-	int32_t i, pl_thread;
+	int32_t i;
+	for (i = 0; i < n; ++i)
+		mb_bseq_close(fp[i]);
+	free(fp);
+}
+
+// fp[] is opened by the caller, which also closes it
+int32_t mb_map_file(const mb_opt_t *opt, const mb_idx_t *idx, int32_t n, mb_bseq_file_t **fp, const char *hdr, const char *fn_out)
+{
+	int32_t pl_thread;
 	pipeline_t pl;
-	if (n < 1) return -1;
+	if (n < 1 || fp == 0) return -1;
 	memset(&pl, 0, sizeof(pipeline_t));
 	pl.fp_out = fn_out == 0 || strcmp(fn_out, "-") == 0? stdout : fopen(fn_out, "wb");
 	if (pl.fp_out == 0) return -1;
 	if (hdr) fputs(hdr, pl.fp_out);
 	pl.n_fp = n;
-	pl.fp = mb_open_bseqs(pl.n_fp, fn);
-	if (pl.fp == 0) return -1;
+	pl.fp = fp;
 	pl.opt = opt, pl.idx = idx;
 	pl.mb_size = opt->mb_size;
 	pl_thread = opt->n_thread <= 2? opt->n_thread : 3;
@@ -292,10 +311,60 @@ int32_t mb_map_file(const mb_opt_t *opt, const mb_idx_t *idx, int32_t n, const c
 	kt_pipeline(pl_thread, worker_pipeline, &pl, 3);
 
 	if (pl.fp_out != stdout) fclose(pl.fp_out);
-	for (i = 0; i < n; ++i)
-		mb_bseq_close(pl.fp[i]);
-	free(pl.fp);
 	return 0;
+}
+
+/****************
+ * Query inputs *
+ ****************/
+
+// 1 if the @HD line of a BAM header says the records are sorted by coordinate
+static int hdr_is_coord_sorted(const char *text)
+{
+	const char *p, *eol, *key = "\tSO:coordinate";
+	if (text == 0 || strncmp(text, "@HD", 3) != 0) return 0;
+	for (eol = text; *eol && *eol != '\n'; ++eol) {}
+	if ((p = strstr(text, key)) == 0 || p >= eol) return 0;
+	p += strlen(key);
+	return *p == '\t' || *p == '\n' || *p == 0;
+}
+
+// open the query files; a BAM flagged as paired turns on PE mode unless --pe is given
+static mb_bseq_file_t **mb_open_query(mb_opt_t *opt, int pe_set, int32_t n, const char **fn)
+{
+	mb_bseq_file_t **fp;
+	int32_t i;
+	if ((fp = mb_open_bseqs(n, fn)) == 0) return 0;
+	if (!pe_set && !(opt->flag & MB_F_PE))
+		for (i = 0; i < n; ++i)
+			if (mb_bseq_is_pe(fp[i])) {
+				opt->flag |= MB_F_PE;
+				if (kom_verbose >= 3)
+					fprintf(stderr, "[M::%s] paired-end BAM; turning on PE mode\n", __func__);
+				break;
+			}
+	// mates are found among adjacent records, so a coordinate-sorted BAM would
+	// quietly map every read as single-end; two file inputs are checked by name instead
+	if ((opt->flag & MB_F_PE) && n == 1 && hdr_is_coord_sorted(mb_bseq_hdr_text(fp[0]))) {
+		fprintf(stderr, "[ERROR] '%s' is sorted by coordinate, so mates are not adjacent.\n", fn[0]);
+		fprintf(stderr, "        collate it first: samtools collate -Ou %s | minibwa map <idx> -\n", fn[0]);
+		fprintf(stderr, "        or pass --pe=no to map every read as single-end\n");
+		mb_close_bseqs(n, fp);
+		return 0;
+	}
+	return fp;
+}
+
+// plain-text headers of the query files, for carrying over @RG, etc.
+static const char **mb_query_hdrs(int32_t n, mb_bseq_file_t **fp)
+{
+	const char **ht;
+	int32_t i;
+	if (n < 1) return 0;
+	ht = kom_calloc(const char*, n);
+	for (i = 0; i < n; ++i)
+		ht[i] = mb_bseq_hdr_text(fp[i]);
+	return ht;
 }
 
 /********************
@@ -346,6 +415,7 @@ static ko_longopt_t long_options[] = {
 	{ "mmap",         ko_optional_argument, 313 },
 	{ "xa-ratio",     ko_required_argument, 314 },
 	{ "outs",         ko_required_argument, 315 },
+	{ "bam-tags",     ko_required_argument, 316 },
 	{ "dbg-aln-seq",  ko_no_argument,       601 },
 	{ "dbg-anchor",   ko_no_argument,       602 },
 	{ "dbg-seed",     ko_no_argument,       603 },
@@ -359,7 +429,7 @@ static ko_longopt_t long_options[] = {
 
 static int usage_map(FILE *fp, const mb_opt_t *opt)
 {
-	fprintf(fp, "Usage: minibwa map [options] <in.idx> <in.fastq>\n");
+	fprintf(fp, "Usage: minibwa map [options] <in.idx> <in.fastq>|<in.bam>\n");
 	fprintf(fp, "Options:\n");
 	fprintf(fp, "  Common:\n");
 	fprintf(fp, "    -f               output PAF (SAM by default)\n");
@@ -398,6 +468,7 @@ static int usage_map(FILE *fp, const mb_opt_t *opt)
 	fprintf(fp, "    --outs=FLOAT     output a secondary hit if score at least FLOAT*bestScore [%g]\n", opt->out_s);
 	fprintf(fp, "    --xa=NUM         if <=NUM hits with score >%g%% of the best hit, output them to XA [%d]\n", opt->out_s*100.0, opt->xa_max);
 	fprintf(fp, "    -y               copy FASTA/Q comments to output\n");
+	fprintf(fp, "    --bam-tags=y|n   carry aux tags of a BAM input over to the output [yes]\n");
 	fprintf(fp, "    -Y               use soft clipping for supplementary alignments\n");
 	fprintf(fp, "    -H STR           if STR starts with @, insert to header; or insert lines in file STR []\n");
 	fprintf(fp, "    -5               take the alignment with the smallest query position as primary\n");
@@ -435,9 +506,10 @@ static void set_ins_size(mb_opt_t *opt, const char *arg)
 int main_map(int argc, char *argv[])
 {
 	const char *opt_str = "x:o:k:c:m:p:A:B:U:b:O:E:t:K:N:PyYR:H:aul:w:W:g:5s:fI:";
-	int32_t c, use_mmap = 0, mmap_preload = 1, is_meth = 0;
+	int32_t c, use_mmap = 0, mmap_preload = 1, is_meth = 0, pe_set = 0, n_fp;
 	mb_idx_t *idx;
 	mb_opt_t mo;
+	mb_bseq_file_t **fp;
 	char *fn_out = 0, *rg_line = 0, *s;
 	ketopt_t o = KETOPT_INIT;
 	kstring_t hdr_ins = {0,0,0}, hdr = {0,0,0};
@@ -494,6 +566,7 @@ int main_map(int argc, char *argv[])
 			mo.flag |= MB_F_EQX;
 		} else if (c == 306) { // --pe
 			yes_or_no(&mo, MB_F_PE, o.longidx, o.arg, 1);
+			pe_set = 1;
 		} else if (c == 307) { // --long
 			if (o.arg == 0) mo.flag |= MB_F_LONG;
 			else yes_or_no(&mo, MB_F_LONG, o.longidx, o.arg, 1);
@@ -512,6 +585,8 @@ int main_map(int argc, char *argv[])
 			if (o.arg != 0 && strcmp(o.arg, "lite") == 0) mmap_preload = 0;
 		} else if (c == 314 || c == 315) { // --outs or --xa-ratio
 			mo.out_s = atof(o.arg);
+		} else if (c == 316) { // --bam-tags
+			yes_or_no(&mo, MB_F_NO_BAM_TAG, o.longidx, o.arg, 0);
 		} else if (c == 601) { // --dbg-aln-seq
 			kom_dbg_flag |= MB_DBG_ALN_SEQ;
 		} else if (c == 602) { // --dbg-anchor
@@ -561,15 +636,22 @@ int main_map(int argc, char *argv[])
 	if (kom_verbose >= 3)
 		fprintf(stderr, "[M::%s::%.3f*%.2f] index loaded\n", __func__, kom_realtime(), kom_percent_cpu());
 
+	n_fp = argc - (o.ind + 1);
+	fp = mb_open_query(&mo, pe_set, n_fp, (const char**)&argv[o.ind+1]);
+	if (fp == 0) { free(hdr_ins.s); mb_idx_destroy(idx); return 1; }
 	if (!(mo.flag & MB_F_PAF)) {
+		const char **hdr_text;
 		int ret;
-		ret = mb_fmt_sam_hdr(&hdr, idx->l2b, rg_line, MB_VERSION, argc, argv);
-		if (ret < 0) return 1; // TODO: free idx and out.s
+		hdr_text = mb_query_hdrs(n_fp, fp);
+		ret = mb_fmt_sam_hdr(&hdr, idx->l2b, rg_line, MB_VERSION, argc, argv, n_fp, hdr_text);
+		free(hdr_text);
+		if (ret < 0) { free(hdr.s); free(hdr_ins.s); mb_close_bseqs(n_fp, fp); mb_idx_destroy(idx); return 1; }
 		if (hdr_ins.l > 0) kom_sprintf_lite(&hdr, "%s", hdr_ins.s);
 	}
 	if (hdr_ins.s) free(hdr_ins.s);
 
-	mb_map_file(&mo, idx, argc - (o.ind + 1), (const char**)&argv[o.ind+1], hdr.s, fn_out);
+	mb_map_file(&mo, idx, n_fp, fp, hdr.s, fn_out);
+	mb_close_bseqs(n_fp, fp);
 	free(hdr.s);
 	mb_idx_destroy(idx);
 	return 0;
@@ -630,9 +712,11 @@ static int usage_mem(FILE *fp, const mb_opt_t *opt)
 
 int main_mem(int argc, char *argv[])
 {
-	int32_t c, ret;
+	int32_t c, ret, n_fp;
 	ketopt_t o = KETOPT_INIT;
 	mb_opt_t mo;
+	mb_bseq_file_t **fp;
+	const char **hdr_text;
 	char *fn_out = 0, *rg_line = 0;
 	kstring_t hdr_ins = {0,0,0}, hdr = {0,0,0};
 	mb_idx_t *idx;
@@ -675,11 +759,17 @@ int main_mem(int argc, char *argv[])
 	if (kom_verbose >= 3)
 		fprintf(stderr, "[M::%s::%.3f*%.2f] index loaded\n", __func__, kom_realtime(), kom_percent_cpu());
 
-	ret = mb_fmt_sam_hdr(&hdr, idx->l2b, rg_line, MB_VERSION, argc, argv);
-	if (ret < 0) return 1; // TODO: free idx and out.s
+	n_fp = argc - (o.ind + 1);
+	fp = mb_open_query(&mo, 0, n_fp, (const char**)&argv[o.ind+1]);
+	if (fp == 0) { free(hdr_ins.s); mb_idx_destroy(idx); return 1; }
+	hdr_text = mb_query_hdrs(n_fp, fp);
+	ret = mb_fmt_sam_hdr(&hdr, idx->l2b, rg_line, MB_VERSION, argc, argv, n_fp, hdr_text);
+	free(hdr_text);
+	if (ret < 0) { free(hdr.s); free(hdr_ins.s); mb_close_bseqs(n_fp, fp); mb_idx_destroy(idx); return 1; }
 	if (hdr_ins.l > 0) kom_sprintf_lite(&hdr, "%s", hdr_ins.s);
 	if (hdr_ins.s) free(hdr_ins.s);
-	mb_map_file(&mo, idx, argc - (o.ind + 1), (const char**)&argv[o.ind+1], hdr.s, fn_out);
+	mb_map_file(&mo, idx, n_fp, fp, hdr.s, fn_out);
+	mb_close_bseqs(n_fp, fp);
 	free(hdr.s);
 	mb_idx_destroy(idx);
 	return 0;

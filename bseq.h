@@ -15,13 +15,18 @@ typedef struct mb_bseq_file_s mb_bseq_file_t;
 typedef struct {
 	uint64_t l_seq, id; // FIXME: bseq doesn't fully support 64-bit integers yet
 	char *name, *seq, *qual, *comment;
+	char *aux; // SAM aux fields from a BAM input, each prefixed by a tab
+	int32_t flag; // SAM FLAG from a BAM input; 0 for FASTA/FASTQ
 } mb_bseq1_t;
 
 mb_bseq_file_t *mb_bseq_open(const char *fn);
 void mb_bseq_close(mb_bseq_file_t *fp);
-mb_bseq1_t *mb_bseq_read(mb_bseq_file_t *fp, int64_t chunk_size, int with_qual, int with_comment, int frag_mode, int min_cnt, int64_t max_chunk_size, int *n_);
-mb_bseq1_t *mb_bseq_read_frag(int n_fp, mb_bseq_file_t **fp, int64_t chunk_size, int with_qual, int with_comment, int *n_);
+mb_bseq1_t *mb_bseq_read(mb_bseq_file_t *fp, int64_t chunk_size, int with_qual, int with_comment, int with_aux, int frag_mode, int min_cnt, int64_t max_chunk_size, int *n_);
+mb_bseq1_t *mb_bseq_read_frag(int n_fp, mb_bseq_file_t **fp, int64_t chunk_size, int with_qual, int with_comment, int with_aux, int *n_);
 int mb_bseq_eof(mb_bseq_file_t *fp);
+void mb_bseq_free1(mb_bseq1_t *s);
+const char *mb_bseq_hdr_text(const mb_bseq_file_t *fp); // NULL for FASTA/FASTQ
+int mb_bseq_is_pe(const mb_bseq_file_t *fp); // 1 if a BAM's first record is paired
 
 static inline int mb_qname_len(const char *s)
 {
