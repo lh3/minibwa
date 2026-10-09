@@ -16,6 +16,7 @@ ifneq ($(asan),)
 	override CFLAGS+=-fsanitize=address
 	override LDFLAGS+=-fsanitize=address
 	override LIBS+=-ldl
+	MALLOC_O=   # mimalloc overrides malloc/free, as does ASan; linking both segfaults
 endif
 
 ifeq ($(omp),1)
@@ -39,12 +40,23 @@ ifeq ($(ARCH), x86_64)
 endif
 
 .SUFFIXES:.c .o
-.PHONY:all clean depend
+.PHONY:all clean depend FORCE
 
 .c.o:
 		$(CC) -c $(CFLAGS) $(CPPFLAGS) $(INCLUDES) $< -o $@
 
 all:$(PROG)
+
+# Objects and the binary depend on the build configuration, so switching between e.g.
+# asan=1 and a plain build recompiles instead of leaving instrumented objects in the
+# archive -- ar replaces members by name, so a stale one survives and fails the link.
+# mimalloc.o is left out: its rule does not use CFLAGS, so it is never instrumented.
+BUILD_CFG=	$(CC)|$(CFLAGS)|$(CPPFLAGS)|$(INCLUDES)|$(LDFLAGS)|$(LIBS)|$(MALLOC_O)
+
+.build-cfg: FORCE
+		@echo '$(BUILD_CFG)' | cmp -s - $@ || echo '$(BUILD_CFG)' > $@
+
+$(LOBJS) $(AOBJS) main.o $(PROG): .build-cfg
 
 mimalloc.o:
 		$(CC) -c -std=gnu11 -O3 -Wall -Wextra -DNDEBUG -DMI_MALLOC_OVERRIDE -DMI_OSX_INTERPOSE=1 -DMI_OSX_ZONE=1 -Imimalloc mimalloc/static.c -o $@
@@ -56,7 +68,7 @@ minibwa:libminibwa.a $(MALLOC_O) $(AOBJS) main.o
 		$(CC) $(CFLAGS) $(LDFLAGS) $(MALLOC_O) $(AOBJS) main.o -o $@ -L. -lminibwa $(LIBS)
 
 clean:
-		rm -fr *.o a.out $(PROG) *~ *.a *.dSYM
+		rm -fr *.o a.out $(PROG) *~ *.a *.dSYM .build-cfg
 
 depend:
 		(LC_ALL=C; export LC_ALL; makedepend -Y -- $(CFLAGS) $(DFLAGS) -- *.c *.cpp)
