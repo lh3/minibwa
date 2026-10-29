@@ -67,7 +67,19 @@ static int mm_test_zdrop(void *km, const mb_opt_t *opt, const uint8_t *qseq, con
 	return max_zdrop > opt->zdrop? 1 : 0;
 }
 
-static void mb_fix_cigar(mb_hit_t *r, const uint8_t *qseq, const uint8_t *tseq, int *qshift, int *tshift)
+// Returns true if moving an indel one base left preserves score. This compares the two
+// bases that swap across the gap: they must be equal, or both score as matches against
+// the opposing base. With --meth, C<->T (and G<->A on the opposite strand) can both be
+// treated as matches, so such swaps may also preserve score.
+static inline int32_t mb_base_swap_ok(const int8_t *mat, int32_t b0, int32_t b1, int32_t partner, int32_t is_ins)
+{
+	if (b0 == b1) return 1;
+	if (b0 > 3 || b1 > 3 || partner > 3) return 0;
+	return is_ins? mat[partner * 5 + b0] == mat[0] && mat[partner * 5 + b1] == mat[0]
+	             : mat[b0 * 5 + partner] == mat[0] && mat[b1 * 5 + partner] == mat[0];
+}
+
+static void mb_fix_cigar(mb_hit_t *r, const uint8_t *qseq, const uint8_t *tseq, const int8_t *mat, int *qshift, int *tshift)
 {
 	mb_extra_t *p = r->p;
 	int32_t toff = 0, qoff = 0, to_shrink = 0;
@@ -84,11 +96,11 @@ static void mb_fix_cigar(mb_hit_t *r, const uint8_t *qseq, const uint8_t *tseq, 
 				int l, prev_len = p->cigar[k-1] >> 4;
 				if (op == MB_CIGAR_INS) {
 					for (l = 0; l < prev_len; ++l)
-						if (qseq[qoff - 1 - l] != qseq[qoff + len - 1 - l])
+						if (!mb_base_swap_ok(mat, qseq[qoff - 1 - l], qseq[qoff + len - 1 - l], tseq[toff - 1 - l], 1))
 							break;
 				} else {
 					for (l = 0; l < prev_len; ++l)
-						if (tseq[toff - 1 - l] != tseq[toff + len - 1 - l])
+						if (!mb_base_swap_ok(mat, tseq[toff - 1 - l], tseq[toff + len - 1 - l], qseq[qoff - 1 - l], 0))
 							break;
 				}
 				if (l > 0)
@@ -223,7 +235,7 @@ void mb_update_extra(void *km, mb_hit_t *r, const uint8_t *qseq, const uint8_t *
 	double s = 0.0, max = 0.0;
 	mb_extra_t *p = r->p;
 	if (p == 0) return;
-	mb_fix_cigar(r, qseq, tseq, &qshift, &tshift);
+	mb_fix_cigar(r, qseq, tseq, mat, &qshift, &tshift);
 	qseq += qshift, tseq += tshift; // qseq and tseq may be shifted due to the removal of leading I/D
 	r->blen = r->mlen = 0;
 	for (k = 0; k < p->n_cigar; ++k) {

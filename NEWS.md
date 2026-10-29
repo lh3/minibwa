@@ -1,3 +1,19 @@
+Unreleased
+----------
+
+Notable changes:
+
+ * Bugfix: in `--meth` mode indels were not fully left aligned. A reference C
+   aligned to a read T scores a match under the methylation matrix, so shifting
+   an indel across such a pair costs nothing, but the left alignment in
+   `mb_fix_cigar` compared bases for equality and stopped there. Deletions
+   therefore came to rest to the right of the position SAM and VCF convention
+   asks for. The shift test now treats two bases as interchangeable when both
+   match the base they swap against, which is equality outside `--meth`, so
+   nothing changes there. On a 2 Mb test window this moved 3,891 indels left and
+   none right, left the alignment score and `NM` of every read unchanged, and
+   raised exact CIGAR agreement with bwa-meth (which uses bwa-mem for alignment) on indel-bearing reads from 75.9% to 88.8% with no reads newly disagreeing.
+
 Release 0.7-r421 (6 August, 2026)
 ---------------------------------
 
