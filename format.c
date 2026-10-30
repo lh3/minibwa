@@ -45,6 +45,26 @@ void mb_fmt_paf(kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, const mb_hi
 	kom_sprintf_lite(s, "\n");
 }
 
+/*************
+ * Utilities *
+ *************/
+
+static inline void str_enlarge(kstring_t *s, int l)
+{
+	if (s->l + l + 1 > s->m) {
+		s->m = s->l + l + 1;
+		kom_roundup64(s->m);
+		s->s = kom_realloc(char, s->s, s->m);
+	}
+}
+
+static inline void str_copy(kstring_t *s, const char *st, const char *en)
+{
+	str_enlarge(s, en - st);
+	memcpy(&s->s[s->l], st, en - st);
+	s->l += en - st;
+}
+
 /**************
  * SAM header *
  **************/
@@ -102,17 +122,109 @@ err_set_rg:
 	return -1;
 }
 
-int mb_fmt_sam_hdr(kstring_t *str, const l2b_t *idx, const char *rg, const char *ver, int argc, char *argv[])
+// get the value of a two-letter tag on a header line; return its length
+static int hdr_get_tag(const char *line, int len, const char *tag, char *out, int max)
 {
-	int i, ret = 0;
+	int i, l = 0;
+	for (i = 3; i + 3 < len; ++i) {
+		if (line[i] != '\t' || line[i+1] != tag[0] || line[i+2] != tag[1] || line[i+3] != ':') continue;
+		for (i += 4; i < len && line[i] != '\t' && l < max - 1; ++i)
+			out[l++] = line[i];
+		break;
+	}
+	out[l] = 0;
+	return l;
+}
+
+// 1 if str already holds line[0,len)
+static int hdr_has_line(const kstring_t *str, const char *line, int len)
+{
+	size_t i;
+	for (i = 0; i + len < str->l; ++i)
+		if ((i == 0 || str->s[i-1] == '\n') && str->s[i+len] == '\n' && strncmp(&str->s[i], line, len) == 0)
+			return 1;
+	return 0;
+}
+
+// 1 if str already holds a line of the given type (e.g. "@RG") with this ID
+static int hdr_has_id(const kstring_t *str, const char *type, const char *id)
+{
+	size_t i;
+	int l_id = strlen(id);
+	for (i = 0; i + 4 < str->l; ++i) {
+		char buf[256];
+		size_t j;
+		if (!(i == 0 || str->s[i-1] == '\n')) continue;
+		if (strncmp(&str->s[i], type, 3) != 0 || str->s[i+3] != '\t') continue;
+		for (j = i; j < str->l && str->s[j] != '\n'; ++j) {}
+		if (hdr_get_tag(&str->s[i], j - i, "ID", buf, sizeof(buf)) == l_id && strcmp(buf, id) == 0)
+			return 1;
+	}
+	return 0;
+}
+
+// carry @RG (deduplicated by ID), @PG and @CO of an input header over to rg[]
+// and other[]; @HD and @SQ are dropped as minibwa writes its own. last_pg takes
+// the ID of the last @PG, for PP chaining.
+static void sam_copy_hdr(kstring_t *rg, kstring_t *other, const char *text, char *last_pg, int max_pg)
+{
+	const char *p, *q;
+	for (p = text; *p; p = *q? q + 1 : q) {
+		int len;
+		for (q = p; *q && *q != '\n'; ++q) {}
+		len = q - p;
+		while (len > 0 && p[len-1] == '\r') --len; // tolerate CRLF
+		if (len < 3 || p[0] != '@') continue;
+		if (strncmp(p, "@HD", 3) == 0 || strncmp(p, "@SQ", 3) == 0) continue;
+		if (strncmp(p, "@RG", 3) == 0) {
+			char id[256];
+			if (hdr_get_tag(p, len, "ID", id, sizeof(id)) == 0) {
+				if (kom_verbose >= 2)
+					fprintf(stderr, "[WARNING]\033[1;31m an @RG line in the input header has no ID; dropped.\033[0m\n");
+				continue;
+			}
+			if (hdr_has_id(rg, "@RG", id)) continue;
+			str_copy(rg, p, p + len);
+			kom_sprintf_lite(rg, "\n");
+		} else {
+			if (hdr_has_line(other, p, len)) continue;
+			str_copy(other, p, p + len);
+			kom_sprintf_lite(other, "\n");
+			if (strncmp(p, "@PG", 3) == 0) {
+				char id[256];
+				if (hdr_get_tag(p, len, "ID", id, sizeof(id)) > 0) // keep the chain if an @PG has no ID
+					snprintf(last_pg, max_pg, "%s", id);
+			}
+		}
+	}
+}
+
+int mb_fmt_sam_hdr(kstring_t *str, const l2b_t *idx, const char *rg, const char *ver, int argc, char *argv[], int32_t n_hdr, const char *const *hdr_text)
+{
+	int i, ret = 0, n_dup = 0;
+	kstring_t in_rg = {0,0,0}, in_other = {0,0,0};
+	char last_pg[256], pg_id[256];
+
+	last_pg[0] = 0;
+	strcpy(pg_id, "minibwa");
 	str->l = 0;
 	kom_sprintf_lite(str, "@HD\tVN:1.6\tSO:unsorted\tGO:query\n");
 	if (idx)
 		for (i = 0; i < idx->n_ctg; ++i)
 			kom_sprintf_lite(str, "@SQ\tSN:%s\tLN:%ld\n", idx->ctg[i].name, idx->ctg[i].len);
+	for (i = 0; i < n_hdr; ++i)
+		if (hdr_text && hdr_text[i])
+			sam_copy_hdr(&in_rg, &in_other, hdr_text[i], last_pg, sizeof(last_pg));
+	if (rg) in_rg.l = 0; // -R applies to every record, so the input @RG lines describe nothing
+	if (in_rg.l > 0) kom_sprintf_lite(str, "%s", in_rg.s);
 	if (rg) ret = sam_write_rg_line(str, rg);
-	kom_sprintf_lite(str, "@PG\tID:minibwa\tPN:minibwa");
+	if (in_other.l > 0) kom_sprintf_lite(str, "%s", in_other.s);
+	while (hdr_has_id(&in_other, "@PG", pg_id)) // @PG IDs must be unique, e.g. on re-aligning minibwa output
+		snprintf(pg_id, sizeof(pg_id), "minibwa.%d", ++n_dup);
+	free(in_rg.s); free(in_other.s);
+	kom_sprintf_lite(str, "@PG\tID:%s\tPN:minibwa", pg_id);
 	if (ver) kom_sprintf_lite(str, "\tVN:%s", ver);
+	if (last_pg[0]) kom_sprintf_lite(str, "\tPP:%s", last_pg);
 	if (argc > 1) {
 		kom_sprintf_lite(str, "\tCL:minibwa");
 		for (i = 0; i < argc; ++i)
@@ -125,22 +237,6 @@ int mb_fmt_sam_hdr(kstring_t *str, const l2b_t *idx, const char *rg, const char 
 /**************
  * SAM output *
  **************/
-
-static inline void str_enlarge(kstring_t *s, int l)
-{
-	if (s->l + l + 1 > s->m) {
-		s->m = s->l + l + 1;
-		kom_roundup64(s->m);
-		s->s = kom_realloc(char, s->s, s->m);
-	}
-}
-
-static inline void str_copy(kstring_t *s, const char *st, const char *en)
-{
-	str_enlarge(s, en - st);
-	memcpy(&s->s[s->l], st, en - st);
-	s->l += en - st;
-}
 
 static void sam_write_sq(kstring_t *s, char *seq, int l, int rev, int comp)
 {
@@ -163,6 +259,46 @@ static inline const mb_hit_t *get_sam_pri(int n_hit, const mb_hit_t *hit)
 			return &hit[i];
 	assert(n_hit == 0);
 	return NULL;
+}
+
+// append the tags carried over from a BAM input, skipping any minibwa has
+// already written: SAM forbids a repeated TAG on one line. bam_aux_drop[] in
+// bam.c removes the expected ones; this keeps the output valid regardless.
+#define MB_MAX_OWN_TAG 64 // minibwa writes ~14; this only has to be an upper bound
+
+static inline uint16_t sam_tag_key(const char *tag) // a two-letter tag name packed into an int
+{
+	return (uint16_t)((uint8_t)tag[0]<<8 | (uint8_t)tag[1]);
+}
+
+static inline int sam_tag_seen(const uint16_t *key, int32_t n_key, uint16_t t)
+{
+	int32_t i;
+	for (i = 0; i < n_key; ++i)
+		if (key[i] == t) return 1;
+	return 0;
+}
+
+static void sam_write_aux(kstring_t *s, size_t tag_st, const char *aux)
+{
+	static int warned = 0;
+	uint16_t key[MB_MAX_OWN_TAG];
+	int32_t n_key = 0;
+	size_t i;
+	const char *p, *q;
+
+	for (i = tag_st; i + 3 < s->l; ++i) // collect once; rescanning s per tag would be quadratic
+		if (s->s[i] == '\t' && s->s[i+3] == ':' && n_key < MB_MAX_OWN_TAG)
+			key[n_key++] = sam_tag_key(&s->s[i+1]);
+	for (p = aux; *p == '\t'; p = q) {
+		for (q = p + 1; *q && *q != '\t'; ++q) {}
+		if (q - p < 4 || p[3] != ':') continue; // not a \tXX:T:VALUE field
+		if (!sam_tag_seen(key, n_key, sam_tag_key(p + 1))) str_copy(s, p, q);
+		else if (!warned && kom_verbose >= 2) {
+			warned = 1;
+			fprintf(stderr, "[WARNING]\033[1;31m input tag %c%c replaced by minibwa's own. Reported once.\033[0m\n", p[1], p[2]);
+		}
+	}
 }
 
 static void write_sam_cigar(kstring_t *s, int sam_flag, int in_tag, int qlen, const mb_hit_t *r, int64_t opt_flag)
@@ -196,6 +332,7 @@ static void write_sam_cigar(kstring_t *s, int sam_flag, int in_tag, int qlen, co
 void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, int32_t n_seg, const int32_t *n_hit, mb_hit_t *const*hit, int32_t hit_idx, const mb_opt_t *opt, int seg_idx, int32_t mate_qlen)
 {
 	int flag, n_h = n_hit[seg_idx];
+	size_t tag_st;
 	int this_tid = -1, this_pos = -1;
 	const mb_hit_t *h = hit[seg_idx], *r_prev = NULL, *r_next;
 	const mb_hit_t *r = n_h > 0 && hit_idx < n_h && hit_idx >= 0? &h[hit_idx] : NULL;
@@ -220,10 +357,13 @@ void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, i
 	}
 	if (n_seg > 1) {
 		if (r && r->proper_pair) flag |= 0x2;
-		if (seg_idx == 0) flag |= 0x40;
-		else if (seg_idx == n_seg - 1) flag |= 0x80;
 		if (r_next == NULL) flag |= 0x8;
 		else if (r_next->rev) flag |= 0x20;
+	} else if (t->flag & 0x1) flag |= 0x1 | 0x8; // a BAM segment whose mate is absent from this run
+	if (t->flag & 0xc0) flag |= t->flag & 0xc0; // the input says which segment this is
+	else if (n_seg > 1) {
+		if (seg_idx == 0) flag |= 0x40;
+		else if (seg_idx == n_seg - 1) flag |= 0x80;
 	}
 	kom_sprintf_lite(s, "\t%d", flag);
 
@@ -290,7 +430,8 @@ void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, i
 	}
 
 	// write tags
-	if (mb_rg_id[0]) kom_sprintf_lite(s, "\tRG:Z:%s", mb_rg_id);
+	tag_st = s->l;
+	if (mb_rg_id[0]) kom_sprintf_lite(s, "\tRG:Z:%s", mb_rg_id); // -R replaces a record's own RG
 	if (n_seg > 2) kom_sprintf_lite(s, "\tFI:i:%d", seg_idx);
 	if (r) {
 		write_tags(s, r);
@@ -345,6 +486,8 @@ void mb_fmt_sam(void *km, kstring_t *s, const l2b_t *l2b, const mb_bseq1_t *t, i
 			}
 		}
 	}
+
+	if (t->aux) sam_write_aux(s, tag_st, t->aux); // tags carried over from a BAM input
 
 	if ((opt->flag & MB_F_COPY_COMMENT) && t->comment)
 		kom_sprintf_lite(s, "\t%s", t->comment);

@@ -121,6 +121,24 @@ Map reads to an index genome. Minibwa automatically detects
 interleaved read pairs and like bwa-mem and minimap2, allowing mixed single-end
 and paired-ened reads as input.
 
+Input files may be FASTA, FASTQ (optionally gzip'd),or BAM; the format is
+detected from the file contents. Both unaligned and aligned BAM are accepted --
+for aligned input, existing alignments are discarded, and secondary and supplementary 
+records are skipped so that each read is mapped once. Records are expected to be 
+collated by name. If the first record of a BAM is flagged as paired, paired-end mode is turned on
+automatically; \fB--pe\fR=\fIno\fR overrides this. Mates are found among
+adjacent records, so a coordinate-sorted BAM is rejected in paired-end mode
+rather than mapped as single-end; when read 1 and read 2 are given as separate
+files, they are paired by position and minibwa stops if the names disagree.
+
+With a BAM input, \fB@RG\fR, \fB@PG\fR and \fB@CO\fR header records are
+carried over to the output, \fB@RG\fR being deduplicated by ID across inputs;
+\fB@HD\fR and \fB@SQ\fR are replaced, as contigs come from the index.
+Auxiliary tags on each record, such as RX and BC, are copied to the output
+alignments unless \fB--bam-tags\fR=\fIno\fR is given. A record carrying its
+own RG has it replaced by \fB-R\fR, which also replaces the input @RG header
+lines since nothing refers to them afterwards.
+
 .SS Common Options
 .TP 10
 .B -f
@@ -326,6 +344,11 @@ times the primary alignment score, output all of them to the XA tag [5]
 .TP
 .B -y
 Copy FASTA/Q comments to output
+.TP
+.BR --bam-tags = yes | no
+Whether to carry auxiliary tags of a BAM input over to the output alignments
+[yes]. Tags describing an alignment (NM, MD, AS, SA, MC, MQ, XA and the like)
+are always dropped, as minibwa recomputes them.
 .TP
 .B -Y
 In the SAM output, use soft clipping for supplementary alignments

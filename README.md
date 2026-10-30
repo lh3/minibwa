@@ -93,6 +93,39 @@ Note in the default adaptive mode, `-g`/`-w`/`-W`/`-N`/`-m`/`-s` only changes
 the short-read setting; the long-read setting is fixed. This mode is disabled
 with `--adap=no` or when `-x sr` or `-x lr` is specified.
 
+#### BAM input support
+
+Minibwa reads BAM as well as FASTA/FASTQ; the format is detected from
+the file contents, so no option is needed. Both unaligned BAM (uBAM) and
+aligned BAM work — for aligned input the existing alignments are discarded and
+the reads are re-mapped. 
+```sh
+minibwa map -t8 ref.fa reads.ubam > aln.sam  # read pairs interleaved in one uBAM
+minibwa map -t8 ref.fa r1.bam r2.bam         # read 1 and read 2 in separate BAMs
+minibwa map -t8 ref.fa - < reads.ubam        # BAM on stdin
+samtools collate -@4 -Ou in.bam | minibwa map -t8 ref.fa -  # collate first
+```
+If the first record of a BAM is flagged as paired, paired-end mode is turned on
+automatically; `--pe=no` overrides this. Records must be collated by name, as
+`samtools collate` or `samtools sort -n` produces: mates are found among
+adjacent records, so minibwa rejects a coordinate-sorted BAM in paired-end mode.Secondary and supplementary input records are skipped so that a read is mapped only once.
+
+When read 1 and read 2 are given as two files, mates are paired by position.
+Minibwa checks that the names agree and aborts if the files are out of sync.
+
+The primary advantage of bam input mode is that header (e.g. RG, SN, BC) and read tags (e.g. RX, BC, MI) are carried over from the input avoiding the need for a later step to stich these attributes back in.
+BAM: `@HD` and `@SQ` are replaced (contigs come from the index), while `@RG`,
+`@PG` and `@CO` are preserved, with `@RG` deduplicated by ID across inputs and
+minibwa's own `@PG` chained via `PP:`. Tags that
+describe an alignment (`NM`, `MD`, `AS`, `SA`, `MC`, `MQ`, `XA`, ...) are
+dropped, as minibwa recomputes them. Use `--bam-tags=no` to copy no tags at
+all. `-R` overrides any `RG` the records already carry, and replaces the input
+`@RG` header lines.
+
+BAM decompression is single-threaded and could become a bottleneck at high
+thread counts. Piping in uncompressed BAM, as `samtools collate -Ou` above
+does, avoids most of that cost.
+
 #### Mapping with legacy bwa-mem CLI
 
 Minibwa also provides legacy bwa-mem command-line interface (CLI) via the `mem` subcommand.

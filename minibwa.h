@@ -23,6 +23,7 @@
 #define MB_F_PRIMARY5         (0x8000LL)    // for Hi-C
 #define MB_F_NO_PAIRING       (0x10000LL)   // don't pair reads
 #define MB_F_METH             (0x20000LL)   // methylation mode
+#define MB_F_NO_BAM_TAG       (0x40000LL)   // don't carry aux tags over from a BAM input
 
 #define MB_CIGAR_MATCH      0
 #define MB_CIGAR_INS        1
