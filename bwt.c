@@ -118,7 +118,7 @@ mb_bwt_t *mb_bwt_init_from_raw(int is_byte, const void *raw_, uint64_t len, uint
 // not exactly the BWT string and therefore this macro is called bwt_B0 instead of bwt_B
 #define bwt_B0(b, k) ((b)->data[((k)>>7<<3) + 4 + (((k)&127)>>5)] >> (((k)&31)<<1) & 3)
 
-static inline void mb_bwt_block_prefetch(const mb_bwt_t *bwt, uint64_t k)
+static inline __attribute__((always_inline)) void mb_bwt_block_prefetch(const mb_bwt_t *bwt, uint64_t k)
 {
 	if (k > 0) __builtin_prefetch(bwt_block(bwt, k - 1 - (k - 1 >= bwt->primary)));
 }
