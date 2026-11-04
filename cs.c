@@ -155,7 +155,7 @@ void mb_write_MD(void *km, kstring_t *s, const uint8_t *tseq, const uint8_t *qse
 			t_off += len;
 		}
 	}
-	if (l_MD > 0) km_sprintf_lite(km, s, "%d", l_MD);
+	km_sprintf_lite(km, s, "%d", l_MD);
 	kfree(km, tmp);
 	assert(t_off == r->te - r->ts && q_off == r->qe - r->qs);
 }
